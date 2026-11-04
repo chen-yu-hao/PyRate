@@ -17,6 +17,9 @@ jobs:
       - run: python -m pip install ".[test,dev]"
       - run: ruff check src tests tools
       - run: mypy
+      # Cross-check the isotopic mass table against independent AME2020 sources.
+      - run: python -m pip install periodictable molmass
+      - run: pytest -q tests/test_elements.py
 
   test-native:
     strategy:
