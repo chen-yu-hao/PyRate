@@ -44,7 +44,7 @@ def profile_wkb_kappa(profile: TunnelingProfile, temperature_k: float) -> float:
 def profile_transmission_probability(
     profile: TunnelingProfile, energy_kj_mol: float
 ) -> float:
-    """Return ``exp(-γ(E))`` for a single energy below the barrier."""
+    """Return a bounded, reflection-aware semiclassical transmission probability."""
 
     coordinates_m = tuple(value * ANGSTROM_M for value in profile.coordinates_angstrom)
     reference = profile.energies_kj_mol[0]
@@ -55,8 +55,20 @@ def profile_transmission_probability(
     energy_j = (energy_kj_mol - reference) * 1000.0 / AVOGADRO_MOL
     barrier = max(energies_j)
     if energy_j >= barrier:
-        return 1.0
+        peak = max(range(len(energies_j)), key=energies_j.__getitem__)
+        if peak == 0 or peak == len(energies_j) - 1:
+            return 1.0
+        xl = coordinates_m[peak] - coordinates_m[peak - 1]
+        xr = coordinates_m[peak + 1] - coordinates_m[peak]
+        curvature = 2.0 * ((energies_j[peak + 1] - energies_j[peak]) / xr - (energies_j[peak] - energies_j[peak - 1]) / xl) / (xl + xr)
+        omega = math.sqrt(-curvature / (profile.reduced_mass_amu * AMU_KG)) if curvature < 0 else 0.0
+        if omega == 0.0:
+            return 1.0
+        from .constants import HBAR_J_S
+        action = -2.0 * math.pi * (energy_j - barrier) / (HBAR_J_S * omega)
+        return 1.0 / (1.0 + math.exp(action))
     exponent = wkb_exponent(
         coordinates_m, energies_j, energy_j, profile.reduced_mass_amu * AMU_KG
     )
-    return math.exp(-exponent) if exponent < 745.0 else 0.0
+    transmission = math.exp(-exponent) if exponent < 745.0 else 0.0
+    return transmission / (1.0 + transmission)
