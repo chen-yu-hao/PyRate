@@ -40,6 +40,7 @@ class CalculationResult:
     tunneling: str
     molecularity: int
     standard_pressure_pa: float
+    constants_profile: str
     rows: tuple[RateRow, ...]
 
     def as_dict(self) -> dict[str, Any]:
@@ -48,7 +49,7 @@ class CalculationResult:
             "method": self.method,
             "tunneling": self.tunneling,
             "molecularity": self.molecularity,
-            "standard_pressure_pa": self.standard_pressure_pa,
+            "standard_pressure_pa": self.standard_pressure_pa,\n            "constants_profile": self.constants_profile,
             "rows": [row.as_dict() for row in self.rows],
         }
 
