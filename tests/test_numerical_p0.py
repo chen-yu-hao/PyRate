@@ -69,3 +69,29 @@ def test_wkb_action_decreases_with_energy() -> None:
     low = wkb_exponent(x, v, 0.0, AMU_KG)
     high = wkb_exponent(x, v, 10_000.0 / AVOGADRO_MOL, AMU_KG)
     assert low > high > 0.0
+
+
+def test_symmetric_eckart_analytic_probability() -> None:
+    """Compare semiclassical transmission with an exact sech² (Eckart) barrier.
+
+    The approximation is not exact: a 12% envelope is applied and documented.
+    The benchmark catches exponent normalization and unit-factor regressions.
+    """
+    from pyrate.models import TunnelingProfile
+    from pyrate.tunneling import profile_transmission_probability
+    from pyrate.constants import HBAR_J_S
+
+    mass = AMU_KG
+    inverse_width = 1.0e10  # 1 / angstrom
+    height = 25_000.0 / AVOGADRO_MOL
+    energy = 10_000.0 / AVOGADRO_MOL
+    wave = math.pi * math.sqrt(2 * mass * energy) / (HBAR_J_S * inverse_width)
+    shape = math.sqrt(8 * mass * height / (HBAR_J_S**2 * inverse_width**2) - 1)
+    exact = math.sinh(wave)**2 / (
+        math.sinh(wave)**2 + math.cosh(math.pi * shape / 2)**2
+    )
+    coordinates = tuple(-5.0 + 10.0 * i / 400 for i in range(401))
+    potential = tuple(25.0 / math.cosh(s)**2 for s in coordinates)
+    profile = TunnelingProfile(coordinates, potential, 1.0)
+    actual = profile_transmission_probability(profile, 10.0)
+    assert math.isclose(actual, exact, rel_tol=0.12)
