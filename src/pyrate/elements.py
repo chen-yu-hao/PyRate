@@ -108,7 +108,8 @@ def atomic_mass_amu(label: str) -> float:
 
 # Representative neutral-atom isotopic masses (unified atomic mass units).
 # Values are explicit nuclidic masses, not terrestrial-abundance atomic weights.
-# Source: NIST Atomic Weights and Isotopic Compositions (neutral atoms):\n# https://pml.nist.gov/cgi-bin/Compositions/stand_alone.pl?ascii=ascii
+# Source: NIST Atomic Weights and Isotopic Compositions (neutral atoms):
+# https://pml.nist.gov/cgi-bin/Compositions/stand_alone.pl?ascii=ascii
 ISOTOPE_MASSES_AMU: dict[str, float] = {
     "1H": 1.00782503223, "2H": 2.01410177812, "3H": 3.0160492779,
     "3He": 3.0160293201, "4He": 4.00260325413,
