@@ -12,13 +12,9 @@ from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
 from .constants import AVOGADRO_MOL
-from .reference import ReferenceRateTable, parse_fu15_summary
+from .reference import ReferenceRateTable, parse_fu15_tables
 
 
-_SUMMARY = re.compile(
-    r"^\s*Summary\s+of\s+(?:forward|reverse)\s+rate\s+constants\s*\(",
-    flags=re.IGNORECASE | re.MULTILINE,
-)
 # Convert to m^3 mol^-1 s^-1 (or to s^-1 for first-order rates).
 _UNIT_FACTORS: dict[str, tuple[str, float]] = {
     "s-1": ("first-order", 1.0),
@@ -26,22 +22,12 @@ _UNIT_FACTORS: dict[str, tuple[str, float]] = {
     "cm3mol-1s-1": ("second-order", 1.0e-6),
     "lmol-1s-1": ("second-order", 1.0e-3),
     "cm3molecule-1s-1": ("second-order", 1.0e-6 * AVOGADRO_MOL),
+    # Compact Polyrate FINAL RATE CONSTANTS tables print
+    # ``cm**3/molecule-sec`` for the same dimensions.
+    "cm3molecule-sec": ("second-order", 1.0e-6 * AVOGADRO_MOL),
 }
 DEFAULT_COLUMN_MAP: Mapping[str, str] = {"TST": "k_tst", "CVT": "k_cvt"}
 _ALLOWED_FIELDS = frozenset({"k_tst", "k_cvt", "k_final"})
-
-
-def parse_fu15_tables(text: str) -> tuple[ReferenceRateTable, ...]:
-    """Find every forward/reverse summary table without losing later blocks."""
-
-    starts = [match.start() for match in _SUMMARY.finditer(text)]
-    if not starts:
-        raise ValueError("no Polyrate rate summary found")
-    tables = tuple(
-        parse_fu15_summary(text[start:stop])
-        for start, stop in zip(starts, starts[1:] + [len(text)])
-    )
-    return tables
 
 
 def _unit_factor(unit: str) -> tuple[str, float]:
