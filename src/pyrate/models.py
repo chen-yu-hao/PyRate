@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping
 
 from .constants import DEFAULT_STANDARD_PRESSURE_PA, validate_constants_profile
 from .elements import atomic_mass_amu, canonical_symbol, isotope_mass_amu
@@ -132,7 +132,11 @@ class Species:
             raise ValueError(
                 f"species {self.name!r} requires atoms or mass_amu"
             )
-        if not self.atoms and self.moments_of_inertia_amu_a2 is None and self.rotor_type != "atomic":
+        if (
+            not self.atoms
+            and self.moments_of_inertia_amu_a2 is None
+            and self.rotor_type != "atomic"
+        ):
             raise ValueError(
                 f"species {self.name!r} without atoms requires moments_of_inertia_amu_a2 "
                 "or rotor_type = 'atomic'"
@@ -175,7 +179,9 @@ class Species:
         return cls(
             name=str(data.get("name", default_name)),
             atoms=atoms,
-            mass_amu_override=(float(data["mass_amu"]) if data.get("mass_amu") is not None else None),
+            mass_amu_override=(
+                float(data["mass_amu"]) if data.get("mass_amu") is not None else None
+            ),
             electronic_energy_kj_mol=float(
                 data.get("electronic_energy_kj_mol", data.get("energy_kj_mol", 0.0))
             ),
