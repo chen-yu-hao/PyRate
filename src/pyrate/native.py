@@ -81,12 +81,20 @@ def wigner_kappa(imaginary_frequency_cm1: float, temperature_k: float) -> float:
 
 
 def refine_maximum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
+    """Refine a *local* CVT bottleneck without extrapolating past adjacent samples.
+
+    A three-point parabola is used even when a wider path is available.  The
+    stationary point is accepted only for a concave parabola, within the
+    immediate bracketing nodes, and when it does not reduce the sampled maximum.
+    This avoids spurious global quartic overshoot on noisy/free-energy paths.
+    """
+
     x_values = np.asarray(x, dtype=float)
     y_values = np.asarray(y, dtype=float)
     if x_values.ndim != 1 or y_values.ndim != 1 or x_values.size != y_values.size:
         raise ValueError("x and y must be one-dimensional arrays of equal length")
-    if x_values.size == 0:
-        raise ValueError("x and y cannot be empty")
+    if x_values.size == 0 or not np.all(np.isfinite(x_values)) or not np.all(np.isfinite(y_values)):
+        raise ValueError("x and y must be nonempty and finite")
     if np.any(np.diff(x_values) <= 0.0):
         raise ValueError("x must be strictly increasing")
     if HAS_NATIVE:
@@ -97,41 +105,26 @@ def refine_maximum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
             float(coordinate), float(value), int(sample_index), int(fit_points)
         )
 
-    maximum_index = int(np.argmax(y_values))
-    if x_values.size < 3 or maximum_index in {0, x_values.size - 1}:
-        return RefinedMaximum(
-            float(x_values[maximum_index]), float(y_values[maximum_index]), maximum_index, 1
-        )
-    count = min(5, int(x_values.size))
-    start = max(0, maximum_index - count // 2)
-    start = min(start, int(x_values.size) - count)
-    local_x = x_values[start : start + count]
-    local_y = y_values[start : start + count]
-    center = float(x_values[maximum_index])
-    scale = max(abs(float(local_x[0]) - center), abs(float(local_x[-1]) - center))
-    if scale <= 0.0:
-        return RefinedMaximum(center, float(y_values[maximum_index]), maximum_index, 1)
-    t = (local_x - center) / scale
-    coefficients = np.polynomial.polynomial.polyfit(t, local_y, count - 1)
-    derivative = np.polynomial.polynomial.polyder(coefficients)
-    roots = np.polynomial.polynomial.polyroots(derivative)
-    candidates = [float(t[0]), float(t[-1]), 0.0]
-    candidates.extend(
-        float(root.real)
-        for root in roots
-        if abs(float(root.imag)) < 1.0e-10 and t[0] <= root.real <= t[-1]
-    )
-    values = [float(np.polynomial.polynomial.polyval(candidate, coefficients)) for candidate in candidates]
-    best = int(np.argmax(values))
-    best_value = values[best]
-    local_span = float(np.ptp(local_y))
-    if not math.isfinite(best_value) or best_value > y_values[maximum_index] + 2.0 * max(
-        1.0, local_span
-    ):
-        return RefinedMaximum(center, float(y_values[maximum_index]), maximum_index, 1)
-    return RefinedMaximum(
-        center + scale * candidates[best], best_value, maximum_index, count
-    )
+    index = int(np.argmax(y_values))
+    sampled = RefinedMaximum(float(x_values[index]), float(y_values[index]), index, 1)
+    if index == 0 or index == x_values.size - 1:
+        return sampled
+
+    left, center, right = (float(v) for v in x_values[index - 1:index + 2])
+    yl, yc, yr = (float(v) for v in y_values[index - 1:index + 2])
+    h_left, h_right = center - left, right - center
+    slope_left = (yc - yl) / h_left
+    slope_right = (yr - yc) / h_right
+    curvature = 2.0 * (slope_right - slope_left) / (h_left + h_right)
+    if curvature >= 0.0 or not math.isfinite(curvature):
+        return sampled
+    slope_center = (h_right * slope_left + h_left * slope_right) / (h_left + h_right)
+    displacement = -slope_center / curvature
+    peak = center + displacement
+    value = yc + slope_center * displacement + 0.5 * curvature * displacement**2
+    if not (left <= peak <= right and math.isfinite(value) and value >= yc):
+        return sampled
+    return RefinedMaximum(peak, value, index, 3)
 
 
 def _linear_sqrt_integral(u0: float, u1: float) -> float:
@@ -177,6 +170,14 @@ def wkb_exponent(
     return 2.0 * math.sqrt(2.0 * reduced_mass_kg) * integral / HBAR_J_S
 
 
+def _semiclassical_probability(action: float) -> float:
+    """Smooth sub-barrier transmission including nonclassical reflection."""
+
+    if action >= 0.0:
+        return math.exp(-action) / (1.0 + math.exp(-action))
+    return 1.0 / (1.0 + math.exp(action))
+
+
 def thermal_wkb_kappa(
     coordinates_m: Sequence[float],
     potentials_j_per_molecule: Sequence[float],
@@ -184,48 +185,69 @@ def thermal_wkb_kappa(
     reduced_mass_kg: float,
     energy_grid_points: int = 400,
 ) -> float:
+    """Canonical transmission divided by the classical step-barrier result.
+
+    The energy origin is the larger asymptotic endpoint (threshold); energies
+    below this threshold have no open reactant/product scattering channel.
+    The probability is smoothed through the barrier top rather than forcing
+    transmission to unity (which would omit nonclassical reflection).
+    """
+
     coordinates = tuple(float(value) for value in coordinates_m)
     potentials = tuple(float(value) for value in potentials_j_per_molecule)
     if len(coordinates) != len(potentials) or len(coordinates) < 3:
         raise ValueError("coordinates and potentials require matching lengths of at least 3")
     if any(right <= left for left, right in zip(coordinates, coordinates[1:])):
         raise ValueError("coordinates must be strictly increasing")
-    if temperature_k <= 0.0 or reduced_mass_kg <= 0.0:
-        raise ValueError("temperature and reduced mass must be positive")
+    if not all(map(math.isfinite, coordinates + potentials)):
+        raise ValueError("coordinates and potentials must be finite")
+    if not math.isfinite(temperature_k) or not math.isfinite(reduced_mass_kg) or temperature_k <= 0 or reduced_mass_kg <= 0:
+        raise ValueError("temperature and reduced mass must be finite and positive")
     if energy_grid_points < 20:
         raise ValueError("energy_grid_points must be at least 20")
     if HAS_NATIVE:
         return float(
             _cpp.thermal_wkb_kappa(
-                coordinates,
-                potentials,
-                float(temperature_k),
-                float(reduced_mass_kg),
+                coordinates, potentials, float(temperature_k), float(reduced_mass_kg),
                 int(energy_grid_points),
             )
         )
-
-    shifted = tuple(value - potentials[0] for value in potentials)
+    reference = potentials[0]
+    shifted = tuple(value - reference for value in potentials)
+    threshold = max(0.0, shifted[-1])
     barrier = max(shifted)
-    if barrier <= 0.0:
+    if barrier <= threshold:
         return 1.0
-    count = energy_grid_points + energy_grid_points % 2
     beta = 1.0 / (BOLTZMANN_J_K * temperature_k)
-    step = barrier / count
+    height = barrier - threshold
+    # Integrate in reduced thermal energy u = beta*(E-threshold).
+    # Include a thermal tail above the barrier, which captures reflection.
+    upper_u = beta * height + 40.0
+    intervals = energy_grid_points + energy_grid_points % 2
+    du = upper_u / intervals
 
-    def integrand(energy: float) -> float:
-        exponent = wkb_exponent(coordinates, shifted, energy, reduced_mass_kg)
-        log_value = beta * (barrier - energy) - exponent
-        if log_value < -745.0:
-            return 0.0
-        if log_value > 709.0:
-            return math.inf
-        return beta * math.exp(log_value)
+    def integrand(u: float) -> float:
+        energy = threshold + u / beta
+        if energy < barrier:
+            action = wkb_exponent(coordinates, shifted, energy, reduced_mass_kg)
+        else:
+            # Analytical continuation of the parabolic-top action.  The
+            # curvature is inferred from local second differences.
+            peak = max(range(len(shifted)), key=shifted.__getitem__)
+            if 0 < peak < len(shifted)-1:
+                x0, x1, x2 = coordinates[peak-1:peak+2]
+                v0, v1, v2 = shifted[peak-1:peak+2]
+                curvature = 2.0*((v2-v1)/(x2-x1)-(v1-v0)/(x1-x0))/(x2-x0)
+                omega = math.sqrt(-curvature / reduced_mass_kg) if curvature < 0 else 0.0
+            else:
+                omega = 0.0
+            action = -2.0*math.pi*(energy-barrier)/(HBAR_J_S*omega) if omega > 0 else -math.inf
+        return math.exp(-u) * _semiclassical_probability(action)
 
-    total = integrand(0.0) + integrand(barrier)
-    for index in range(1, count):
-        total += (2.0 if index % 2 == 0 else 4.0) * integrand(index * step)
-    return 1.0 + step * total / 3.0
+    total = integrand(0.0) + integrand(upper_u)
+    for index in range(1, intervals):
+        total += (4.0 if index % 2 else 2.0)*integrand(index*du)
+    return math.exp(min(709.0, beta*height)) * du*total/3.0
 
 
 def beyer_swinehart(
