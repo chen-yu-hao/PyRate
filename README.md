@@ -104,7 +104,7 @@ python tools/compare_polyrate_rates.py /path/to/case.fu15 /tmp/pyrate.json --rto
 
 工具将匹配温度、检查速率量纲、执行单位换算并输出每项误差；未映射的高级方法不会被误报为通过。该工具的合成测试通过**不代表**已经完成 112 个官方算例的数值验收，说明见 [头对头测试规范](docs/head-to-head.md)。
 
-完整模块矩阵和“完成”的数值验收条件见 [`docs/compatibility.md`](docs/compatibility.md)。参考测试工作流见 [`docs/reference-validation.md`](docs/reference-validation.md)。
+完整模块矩阵和“完成”的数值验收条件见 [`docs/compatibility.md`](docs/compatibility.md)。审计结论、已知数值偏差与并行开发计划见 [`docs/roadmap.md`](docs/roadmap.md)。参考测试工作流见 [`docs/reference-validation.md`](docs/reference-validation.md)。
 
 ## 许可与来源
 
