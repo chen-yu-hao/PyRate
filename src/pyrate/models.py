@@ -7,7 +7,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .constants import DEFAULT_STANDARD_PRESSURE_PA
-from .elements import atomic_mass_amu, canonical_symbol
+from .elements import (
+    DEFAULT_MASS_MODEL,
+    atomic_mass_amu,
+    canonical_symbol,
+    normalize_mass_model,
+)
 
 
 def _as_float_tuple(values: Iterable[float] | None) -> tuple[float, ...]:
@@ -18,7 +23,13 @@ def _as_float_tuple(values: Iterable[float] | None) -> tuple[float, ...]:
 
 @dataclass(frozen=True, slots=True)
 class Atom:
-    """An atom with Cartesian coordinates in ångström and mass in amu."""
+    """An atom with Cartesian coordinates in ångström and mass in amu.
+
+    When ``mass_amu`` is omitted it is filled in from ``mass_model``:
+    ``"isotopic"`` (default) uses the most abundant isotope, ``"average"`` the
+    conventional atomic weight; see :mod:`pyrate.elements`.  An explicit
+    ``mass_amu`` always wins and ``mass_model`` is then only recorded.
+    """
 
     symbol: str
     x_angstrom: float
@@ -26,11 +37,16 @@ class Atom:
     z_angstrom: float
     mass_amu: float | None = None
     label: str | None = None
+    mass_model: str = DEFAULT_MASS_MODEL
 
     def __post_init__(self) -> None:
         symbol = canonical_symbol(self.symbol)
+        model = normalize_mass_model(self.mass_model)
         object.__setattr__(self, "symbol", symbol)
-        mass = atomic_mass_amu(symbol) if self.mass_amu is None else float(self.mass_amu)
+        object.__setattr__(self, "mass_model", model)
+        mass = (
+            atomic_mass_amu(symbol, model) if self.mass_amu is None else float(self.mass_amu)
+        )
         if mass <= 0.0:
             raise ValueError("atom mass must be positive")
         object.__setattr__(self, "mass_amu", mass)
@@ -50,7 +66,9 @@ class Atom:
         return (self.x_angstrom, self.y_angstrom, self.z_angstrom)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> Atom:
+    def from_mapping(
+        cls, data: Mapping[str, Any], *, mass_model: str = DEFAULT_MASS_MODEL
+    ) -> Atom:
         xyz = data.get("xyz") or data.get("coordinates_angstrom")
         if xyz is None or len(xyz) != 3:
             raise ValueError("each atom requires xyz = [x, y, z]")
@@ -61,6 +79,7 @@ class Atom:
             y_angstrom=float(xyz[1]),
             z_angstrom=float(xyz[2]),
             mass_amu=float(data["mass_amu"]) if data.get("mass_amu") is not None else None,
+            mass_model=mass_model,
         )
 
 
@@ -158,8 +177,19 @@ class Species:
         return tuple(value for value in self.frequencies_cm1 if value > 0.0)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], default_name: str = "species") -> Species:
-        atoms = tuple(Atom.from_mapping(item) for item in data.get("atoms", ()))
+    def from_mapping(
+        cls,
+        data: Mapping[str, Any],
+        default_name: str = "species",
+        *,
+        mass_model: str = DEFAULT_MASS_MODEL,
+    ) -> Species:
+        """Build a species; ``mass_model`` fills atom masses not given explicitly."""
+
+        model = normalize_mass_model(mass_model)
+        atoms = tuple(
+            Atom.from_mapping(item, mass_model=model) for item in data.get("atoms", ())
+        )
         states_data = data.get("electronic_states")
         states: tuple[ElectronicState, ...]
         if states_data is None:
@@ -212,10 +242,14 @@ class PathPoint:
         object.__setattr__(self, "coordinate", float(self.coordinate))
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], index: int) -> PathPoint:
+    def from_mapping(
+        cls, data: Mapping[str, Any], index: int, *, mass_model: str = DEFAULT_MASS_MODEL
+    ) -> PathPoint:
         return cls(
             coordinate=float(data["coordinate"]),
-            dividing_surface=Species.from_mapping(data, default_name=f"path-{index}"),
+            dividing_surface=Species.from_mapping(
+                data, default_name=f"path-{index}", mass_model=mass_model
+            ),
         )
 
 

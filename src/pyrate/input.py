@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .constants import BAR_PA
+from .elements import DEFAULT_MASS_MODEL, MassModel, normalize_mass_model
 from .legacy import LegacyInput, load_legacy
 from .models import (
     CalculationOptions,
@@ -33,6 +34,7 @@ class LoadedCalculation:
     options: CalculationOptions
     raw: Mapping[str, Any]
     source: str | None = None
+    mass_model: MassModel = DEFAULT_MASS_MODEL
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -46,6 +48,7 @@ class LoadedCalculation:
             "temperatures_k": list(self.options.temperatures_k),
             "method": self.options.method,
             "tunneling": self.options.tunneling,
+            "mass_model": self.mass_model,
             "path_points": len(self.reaction.path.points) if self.reaction.path else 0,
             "standard_pressure_pa": self.reaction.standard_pressure_pa,
         }
@@ -57,28 +60,51 @@ def _mapping(value: Any, name: str) -> Mapping[str, Any]:
     return value
 
 
+def _mass_model(calculation: Mapping[str, Any]) -> MassModel:
+    value = calculation.get("mass_model", DEFAULT_MASS_MODEL)
+    try:
+        return normalize_mass_model(value)
+    except ValueError:
+        raise ValueError(
+            "[calculation] mass_model must be 'isotopic' or 'average', "
+            f"got {value!r}"
+        ) from None
+
+
 def parse_toml_data(
     data: Mapping[str, Any], *, source: str | None = None
 ) -> LoadedCalculation:
     calculation = _mapping(data.get("calculation", {}), "calculation")
     name = str(calculation.get("name", "PyRate calculation"))
+    # Applied to every atom without an explicit mass_amu, in all species.
+    mass_model = _mass_model(calculation)
 
     reactant_tables = data.get("reactants")
     if not isinstance(reactant_tables, list) or not reactant_tables:
         raise ValueError("input requires one or two [[reactants]] tables")
     reactants = tuple(
-        Species.from_mapping(_mapping(table, f"reactants[{index}]"), f"reactant-{index + 1}")
+        Species.from_mapping(
+            _mapping(table, f"reactants[{index}]"),
+            f"reactant-{index + 1}",
+            mass_model=mass_model,
+        )
         for index, table in enumerate(reactant_tables)
     )
 
     transition_table = _mapping(data.get("transition_state"), "transition_state")
-    transition_state = Species.from_mapping(transition_table, "transition-state")
+    transition_state = Species.from_mapping(
+        transition_table, "transition-state", mass_model=mass_model
+    )
 
     product_tables = data.get("products", [])
     if not isinstance(product_tables, list):
         raise ValueError("products must use [[products]] array tables")
     products = tuple(
-        Species.from_mapping(_mapping(table, f"products[{index}]"), f"product-{index + 1}")
+        Species.from_mapping(
+            _mapping(table, f"products[{index}]"),
+            f"product-{index + 1}",
+            mass_model=mass_model,
+        )
         for index, table in enumerate(product_tables)
     )
 
@@ -91,7 +117,7 @@ def parse_toml_data(
             raise ValueError("[path] requires one or more [[path.points]] tables")
         points = tuple(
             PathPoint.from_mapping(
-                _mapping(table, f"path.points[{index}]"), index
+                _mapping(table, f"path.points[{index}]"), index, mass_model=mass_model
             )
             for index, table in enumerate(point_tables)
         )
@@ -137,7 +163,12 @@ def parse_toml_data(
         tunneling_profile=tunneling_profile,
     )
     return LoadedCalculation(
-        name=name, reaction=reaction, options=options, raw=data, source=source
+        name=name,
+        reaction=reaction,
+        options=options,
+        raw=data,
+        source=source,
+        mass_model=mass_model,
     )
 
 
