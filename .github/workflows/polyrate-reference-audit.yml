@@ -58,6 +58,13 @@ jobs:
             reference-dist reference-report/report.json \
             --output reference-report/core-reference-bundle.json
 
+      - name: Validate fu30, fu31, and fu40 readers
+        run: |
+          python tools/validate_core_reference_bundle.py \
+            reference-report/core-reference-bundle.json \
+            --output reference-report/fixed-unit-validation.json
+          cat reference-report/fixed-unit-validation.json
+
       - name: Run PyRate test suite
         run: pytest -q
 

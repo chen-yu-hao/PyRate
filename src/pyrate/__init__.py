@@ -3,6 +3,16 @@
 from __future__ import annotations
 
 from .calculation import CalculationResult, RateRow, calculate_rates
+from .fixed_units import (
+    FixedUnitDocument,
+    FixedUnitEntry,
+    FixedUnitPathPoint,
+    FixedUnitSection,
+    FixedUnitStationaryPoint,
+    parse_fixed_unit,
+    parse_fixed_unit_text,
+    summarize_fixed_unit,
+)
 from .input import LoadedCalculation, load_input, load_toml, parse_toml_data
 from .models import (
     Atom,
@@ -34,6 +44,11 @@ __all__ = [
     "CalculationResult",
     "DEFAULT_TRACE_TOLERANCES",
     "ElectronicState",
+    "FixedUnitDocument",
+    "FixedUnitEntry",
+    "FixedUnitPathPoint",
+    "FixedUnitSection",
+    "FixedUnitStationaryPoint",
     "HAS_NATIVE",
     "LoadedCalculation",
     "NormalModeResult",
@@ -56,7 +71,10 @@ __all__ = [
     "load_input",
     "load_toml",
     "normal_modes",
+    "parse_fixed_unit",
+    "parse_fixed_unit_text",
     "parse_toml_data",
+    "summarize_fixed_unit",
     "vibrational_density_of_states",
 ]
 
