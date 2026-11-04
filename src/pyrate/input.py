@@ -44,7 +44,7 @@ class LoadedCalculation:
             "method": self.options.method,
             "tunneling": self.options.tunneling,
             "path_points": len(self.reaction.path.points) if self.reaction.path else 0,
-            "standard_pressure_pa": self.reaction.standard_pressure_pa,
+            "standard_pressure_pa": self.reaction.standard_pressure_pa,\n            "constants_profile": self.reaction.constants_profile,
         }
 
 
@@ -108,7 +108,7 @@ def parse_toml_data(
         transition_state=transition_state,
         products=products,
         path=path_model,
-        standard_pressure_pa=pressure_pa,
+        standard_pressure_pa=pressure_pa,\n        constants_profile=str(calculation.get("constants_profile", "codata2018")),
     )
 
     temperatures = calculation.get("temperatures_k")
