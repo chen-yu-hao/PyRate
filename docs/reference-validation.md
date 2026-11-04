@@ -42,4 +42,4 @@ A reference manifest should record archive version, DOI, file SHA-256, platform/
 - Mendeley program DOI: https://doi.org/10.17632/vpf3y9cbhf.1
 - CPC announcement: https://doi.org/10.1016/j.cpc.2023.108933
 
-These are source-record checks only: archive and PDF binaries have not been downloaded, hashed locally, or parsed. The release article confirms ICVT removal and 1 bar standard-state free energies, not algorithm-by-algorithm PyRate equivalence. Record SHA-256 only after fetching the bytes.
+PR #6's successful GitHub Actions reference-audit run downloaded the archive, checked its published MD5 and extracted 112 reference cases. The PDF manual has not been downloaded and hashed by this branch; full staged Polyrate numeric equivalence remains unverified. The release article confirms ICVT removal and 1 bar standard-state free energies, not algorithm-by-algorithm PyRate equivalence. Record SHA-256 only after fetching the bytes.

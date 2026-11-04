@@ -20,6 +20,25 @@ FU15 = """
    300.0 2.00D+01 2.20D+01
 """
 
+COMPACT_FINAL = """
+ FINAL RATE CONSTANTS IVTST-1 (cm**3/molecule-sec)
+ T(K) TST TST/W TST/ZCT
+ 200.0 1.00E-20 2.00E-20 3.00E-20
+ 300.0 2.00E-19 3.00E-19 4.00E-19
+
+ FINAL RATE CONSTANTS (cm**3/molecule-sec)
+ T(K) CVT CVT/W CVT/ZCT
+ 200.0 1.50E-20 2.50E-20 3.50E-20
+ 300.0 2.50E-19 3.50E-19 4.50E-19
+"""
+
+COMPACT_TST = """
+ Forward TST rate constants:
+ T(K) TST
+ 200.0 1.00E-20
+ 300.0 2.00E-19
+"""
+
 
 def _result():
     factor = 1e-6 * AVOGADRO_MOL
@@ -36,6 +55,23 @@ def test_all_forward_reverse_tables_are_preserved():
     assert len(tables) == 2
     assert (tables[0].direction, tables[1].direction) == ("forward", "reverse")
     assert tables[0].column("CVT/SCT") == (3e-20, 4e-19)
+
+
+def test_compact_final_tables_are_preserved_and_unit_aware():
+    tables = parse_fu15_tables(COMPACT_FINAL)
+    assert len(tables) == 2
+    assert tables[0].columns == ("TST", "TST/W", "TST/ZCT")
+    assert tables[1].columns == ("CVT", "CVT/W", "CVT/ZCT")
+    report = compare_fu15_to_pyrate(tables[0], _result())
+    assert report.success
+    assert (report.compared, report.passed, report.unmapped) == (2, 2, 4)
+
+
+def test_compact_tst_without_unit_is_not_compared_by_guessing():
+    table = parse_fu15_tables(COMPACT_TST)[0]
+    assert table.unit == "unspecified"
+    with pytest.raises(ValueError, match="unrecognized rate unit"):
+        compare_fu15_to_pyrate(table, _result())
 
 
 def test_units_and_explicit_method_mapping():

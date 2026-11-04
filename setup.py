@@ -21,7 +21,13 @@ extensions = [
         sources=["cpp/kernels.cpp"],
         language="c++",
         extra_compile_args=compile_args,
-    )
+    ),
+    Extension(
+        "pyrate._wkb_kernels",
+        sources=["cpp/wkb_kernels.cpp"],
+        language="c++",
+        extra_compile_args=compile_args,
+    ),
 ]
 
 setup(ext_modules=extensions)

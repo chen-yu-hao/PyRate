@@ -1,0 +1,94 @@
+name: Polyrate reference audit
+
+on:
+  push:
+    branches:
+      - feat/polyrate-reference-audit
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-reference-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      POLYRATE_ARCHIVE_URL: https://zenodo.org/records/8309384/files/polyrate2023.0831.xz?download=1
+      POLYRATE_ARCHIVE_MD5: fa1423cc3f4a1279631b05f49228a2d2
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install PyRate
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[test]"
+          python -m pyrate native-info
+
+      - name: Download official Polyrate 2023 revision B distribution
+        run: |
+          curl --fail --location --retry 4 --retry-all-errors \
+            --output polyrate2023.0831.xz "$POLYRATE_ARCHIVE_URL"
+          echo "$POLYRATE_ARCHIVE_MD5  polyrate2023.0831.xz" | md5sum --check --strict
+          ls -lh polyrate2023.0831.xz
+
+      - name: Extract reference distribution
+        run: |
+          mkdir -p reference-dist
+          tar -xJf polyrate2023.0831.xz -C reference-dist
+          find reference-dist -maxdepth 3 -type d | sort | head -100
+
+      - name: Audit official inputs and outputs
+        run: |
+          python tools/audit_polyrate_reference.py reference-dist \
+            --output-dir reference-report \
+            --source-url "$POLYRATE_ARCHIVE_URL" \
+            --archive-md5 "$POLYRATE_ARCHIVE_MD5"
+          cat reference-report/report.md
+
+      - name: Export core legacy reference bundle
+        run: |
+          python tools/export_core_reference_bundle.py \
+            reference-dist reference-report/report.json \
+            --output reference-report/core-reference-bundle.json
+
+      - name: Validate fu30, fu31, and fu40 readers
+        run: |
+          python tools/validate_core_reference_bundle.py \
+            reference-report/core-reference-bundle.json \
+            --output reference-report/fixed-unit-validation.json
+          cat reference-report/fixed-unit-validation.json
+
+      - name: Execute mapped legacy TST subset
+        run: |
+          python tools/validate_core_legacy_execution.py \
+            reference-report/core-reference-bundle.json \
+            --output reference-report/legacy-execution-validation.json \
+            --expected-executable 4 \
+            --expected-matches 4 \
+            --audit-report reference-report/report.json \
+            --case-manifest reference-report/case-manifest.json
+          cat reference-report/report.md
+
+      - name: Run PyRate test suite
+        run: pytest -q
+
+      - name: Benchmark native and fallback kernels
+        run: |
+          python tools/benchmark_kernels.py --both --repeats 2 \
+            | tee reference-report/pyrate-kernel-benchmark.txt
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: polyrate-reference-audit-${{ github.sha }}
+          path: reference-report/
+          if-no-files-found: error
+          retention-days: 30

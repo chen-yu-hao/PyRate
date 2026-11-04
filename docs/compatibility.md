@@ -8,18 +8,19 @@
 
 | Polyrate 能力 | PyRate 0.1 状态 | 当前边界 / 验收条件 |
 |---|---|---|
-| `*GENERAL` 等 section 语法 | Partial | 区段、block、未知 keyword 均保留；尚未执行所有 keyword 语义 |
-| 原子、几何、单位模型 | Partial | TOML 强类型模型完整；legacy 单位/同位素语义仍需逐关键字映射 |
+| `*GENERAL` 等 section 语法 | Partial | 官方 112/112 主输入可保留区段、block 和未知 keyword；尚未执行全部 keyword 语义 |
+| 原子、几何、单位模型 | Partial | TOML 强类型模型完整；legacy 已映射首批直接频率 TST 算例的原子表、几何、Bohr/Å 坐标和默认质量；同位素及更多默认值仍待对齐 |
+| Legacy 语义与执行状态 | Partial | 语法、语义映射和执行状态分开报告；4/112 官方输入可直接构造 typed `Reaction` 并运行，其余输入明确列出 blocker |
 | 理想气体平动分区函数 | Implemented | 1 bar 标准态，单/双分子单位测试 |
 | 刚性转子分区函数 | Implemented | 原子、线性、非线性和对称数 |
 | 谐振子分区函数与 ZPE | Implemented | 正频率；负频率作为反应坐标排除 |
-| 电子分区函数 | Implemented | 多电子态、能级和简并度 |
-| CTST / TST | Implemented | harmonic RRHO，单/双分子 |
-| canonical VTST / CVT | Implemented | 用户提供的路径分割面；温度依赖自由能瓶颈，局部峰值保护；待官方路径回归 |
-| Polyrate 3/5-point `FITMAX` 行为 | Partial | 目前采用保守三点抛物线局部精修；与官方 FITMAX 3/5-point 行为尚未对齐 |
+| 电子分区函数 | Implemented | 多电子态、能级和简并度；legacy 执行目前仅接受零激发能条目 |
+| CTST / TST | Implemented | harmonic RRHO，单/双分子；4 个官方直接频率 legacy 算例已匹配打印的正向 TST 表 |
+| canonical VTST / CVT | Implemented | 用户提供的路径分割面；温度依赖自由能瓶颈；官方 legacy CVT 尚未贯通 |
+| Polyrate 3/5-point `FITMAX` 行为 | Partial | 局部三点抛物线精修并限制在相邻采样区间；尚未复现官方 FITMAX 3/5 点 |
 | CUS | Planned | 需 spline-unified statistical treatment |
-| Wigner | Implemented | 单一虚频 |
-| ZCT / MEPSAG | Partial | 改进了分段 action、阈值和反射近似；尚非 Polyrate ZCT/MEPSAG 的等价实现 |
+| Wigner | Implemented | 单一虚频；legacy Wigner 仅在固定 unit 文件提供可转换虚频时可进入映射 |
+| ZCT / MEPSAG | Partial | 一维 WKB action 与反射/阈值修正已有近似实现；尚未实现完整 MEP 和官方 ZCT/MEPSAG 透射概率 |
 | SCT / CD-SCSAG | Planned | 需反应路径曲率和 small-curvature action |
 | LCT / LCG3 / LCG4 | Planned | 需 large-curvature tunneling path |
 | ICVT | Historical only | Polyrate 2023 已移除 ICVT；仅作为旧版本兼容范围，不计入 2023 必选功能 |
@@ -33,12 +34,14 @@
 | VRC-VTST | Planned | loose transition state sampling 尚未实现 |
 | SS-QRRK / pressure dependence | Partial | DOS 基础完成；master equation 与碰撞模型未实现 |
 | Solvent / surface options | Planned | 尚未实现 |
-| Restart files / legacy unit files | Planned | 尚未复现固定文件单元语义 |
-| `fu15` summary reader | Implemented | forward/reverse 第一张速率表 |
+| Restart files / legacy unit files | Partial | `fu30`/`fu31`/`fu40` 已有保留式读取与通用 stationary-point 转换；直接频率 TST 子集可执行，Hessian-to-mode、路径和 restart 语义尚未完成 |
+| `fu15` rate-table reader | Implemented | 官方 101/102 输出可结构化读取、共 113 张表；15 个 compact TST 表未打印单位，比较器拒绝无上下文的单位猜测；唯一未读文件为空 |
 | Polyrate fixed-format output 1:1 | Planned | 当前输出为结构化 JSON/CSV/表格 |
-| 112 个 Polyrate 2023 test runs | Planned | 官方分发包和手册链接已核实，尚未完成获取/运行；manifest/import 工具已提供 |
+| 112 个 Polyrate 2023 test runs | Partial | 语法 112/112；legacy 直接执行 4/112；打印的正向 TST 速率表匹配 4/112；完整中间量加最终速率复现仍为 0/112 |
 
-对应的逐温度、逐列数值比较工具与严格失败语义见 [`docs/head-to-head.md`](head-to-head.md)。
+完整实测结果见 [`docs/polyrate-2023-head-to-head.md`](polyrate-2023-head-to-head.md)；
+逐温度、逐列数值比较工具与严格失败语义见 [`docs/head-to-head.md`](head-to-head.md)；
+当前可执行 legacy 子集见 [`docs/legacy-execution.md`](legacy-execution.md)。
 
 ## “1:1 完成”的定义
 
@@ -46,13 +49,15 @@
 
 1. 对应 legacy keyword 可解析并执行；
 2. 与 Polyrate reference run 使用相同物理模型；
-3. 关键中间量（分区函数、`ΔG(s)`、action、瓶颈位置）有回归测试；
+3. 关键中间量（分区函数、ZPE、`ΔG(s)`、action、瓶颈位置）有回归测试；
 4. 最终速率在预先声明的误差容限内；
 5. 原生和 Python 回退结果一致；
 6. 文档清楚说明单位、默认值和不兼容行为。
 
-建议数值门槛：纯代数/分区函数相对误差 `≤1e-10`；路径拟合和数值积分 `≤1e-6`；完整速率对 legacy 文本舍入前数据 `≤1e-4`，对仅有三位有效数字的 `fu15` 表采用 `≤5e-3`。
+建议数值门槛：纯代数/分区函数相对误差 `≤1e-10`；路径拟合和数值积分 `≤1e-6`；完整速率对 legacy 文本舍入前数据 `≤1e-4`。仅有三位有效数字的 compact `fu15` 表采用 `5e-3` 相对容差，并叠加最后一位打印值的半个量化间隔。只匹配打印的最终速率记为阶段性证据，不计为完整数值复现。
 
-## P0 数值验证状态（2026-11）
+## P0 内核更新（待数值验收）
 
-修复分支提供一个非经典反射的势垒顶抛物线延拓近似，不能将其称为已经复现 Polyrate 的全能量透射概率或其 ZCT 算法。必须补充精确 Eckart 解析对照、端点不对称阈值测试、积分收敛测试和官方中间量后才能声明等价。`constants_profile=codata2018` 当前只允许单个固定常数集，拒绝未实现的历史配置。
+WKB 计算已处理分子尺度焦耳积分误差，支持非经典反射的抛物线势垒顶近似，并使用反应/产物端点阈值。CVT 使用保守的三点局部抛物线插值以避免五点高阶多项式的伪极值。以上变化尚未通过官方 ZCT/CVT 中间量门禁；不要将其视为已实现 Polyrate 完全相同的透射概率或 `FITMAX`。
+
+`constants_profile` 目前只支持 `codata2018` 并拒绝未知配置；显式同位素质量按中性核素质量存储。

@@ -1,8 +1,9 @@
 """Stable Python interface to optional C++ numerical kernels.
 
-The package remains usable from a source checkout when the extension has not
-been built.  Production installations compile :mod:`pyrate._kernels`; the
-fallbacks below deliberately mirror the native algorithms for reproducibility.
+The package remains usable from a source checkout when the extensions have not
+been built. Production installations compile :mod:`pyrate._kernels` and
+:mod:`pyrate._wkb_kernels`; the fallbacks below deliberately mirror the native
+algorithms for reproducibility.
 """
 
 from __future__ import annotations
@@ -25,7 +26,17 @@ try:
 except ImportError:  # pragma: no cover - exercised explicitly through fallback tests
     _cpp = None
 
-HAS_NATIVE = _cpp is not None
+try:
+    if _DISABLE_NATIVE:
+        raise ImportError("native kernels disabled by PYRATE_DISABLE_NATIVE")
+    from . import _wkb_kernels as _wkb_cpp
+except ImportError:  # pragma: no cover - exercised explicitly through fallback tests
+    _wkb_cpp = None
+
+# A native installation is considered complete only when both extension modules
+# are available. This avoids silently routing only part of one calculation
+# through compiled code when a stale or partial build is imported.
+HAS_NATIVE = _cpp is not None and _wkb_cpp is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,14 +51,24 @@ def backend_info() -> dict[str, str | bool]:
     return {
         "native": HAS_NATIVE,
         "backend": "cpp" if HAS_NATIVE else "python",
-        "version": _cpp.native_version() if HAS_NATIVE else "python-fallback-0.1",
+        "version": (
+            f"{_cpp.native_version()}+{_wkb_cpp.native_version()}"
+            if HAS_NATIVE
+            else "python-fallback-0.2"
+        ),
     }
+
+
+def _require_finite(values: Iterable[float], name: str) -> None:
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError(f"{name} must contain only finite values")
 
 
 def harmonic_log_partition(frequencies_cm1: Iterable[float], temperature_k: float) -> float:
     frequencies = tuple(float(value) for value in frequencies_cm1)
-    if temperature_k <= 0.0:
-        raise ValueError("temperature must be positive")
+    if not math.isfinite(temperature_k) or temperature_k <= 0.0:
+        raise ValueError("temperature must be positive and finite")
+    _require_finite(frequencies, "frequencies_cm1")
     if HAS_NATIVE:
         return float(_cpp.harmonic_log_partition(frequencies, float(temperature_k)))
     total = 0.0
@@ -66,8 +87,10 @@ def harmonic_log_partition(frequencies_cm1: Iterable[float], temperature_k: floa
 
 
 def wigner_kappa(imaginary_frequency_cm1: float, temperature_k: float) -> float:
-    if temperature_k <= 0.0:
-        raise ValueError("temperature must be positive")
+    if not math.isfinite(imaginary_frequency_cm1):
+        raise ValueError("imaginary frequency must be finite")
+    if not math.isfinite(temperature_k) or temperature_k <= 0.0:
+        raise ValueError("temperature must be positive and finite")
     if HAS_NATIVE:
         return float(_cpp.wigner_kappa(float(imaginary_frequency_cm1), float(temperature_k)))
     ratio = (
@@ -128,19 +151,60 @@ def refine_maximum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
 
 
 def _linear_sqrt_integral(u0: float, u1: float) -> float:
+    """Integrate ``sqrt(max(u(t), 0))`` for a linear segment on ``[0, 1]``.
+
+    The formulas are algebraically equivalent to the usual difference of
+    three-halves powers but are scaled to the local energy. This is essential
+    for molecular barriers, whose per-molecule energies are typically around
+    ``1e-20`` joule and must never be compared with an absolute ``1.0`` scale.
+    """
+
     if u0 <= 0.0 and u1 <= 0.0:
         return 0.0
-    delta = u1 - u0
-    scale = max(abs(u0), abs(u1), 1.0e-300)
-    if abs(delta) <= np.finfo(float).eps * scale:
-        return math.sqrt(max(0.0, u0))
     if u0 > 0.0 and u1 > 0.0:
-        # Rationalized form avoids cancellation for nearly equal endpoints.
-        root0, root1 = math.sqrt(u0), math.sqrt(u1)
-        return (2.0 / 3.0) * (u0 + root0 * root1 + u1) / (root0 + root1)
+        scale = max(u0, u1)
+        root0 = math.sqrt(u0 / scale)
+        root1 = math.sqrt(u1 / scale)
+        return (
+            (2.0 / 3.0)
+            * math.sqrt(scale)
+            * (root0 * root0 + root0 * root1 + root1 * root1)
+            / (root0 + root1)
+        )
     if u0 > 0.0:
-        return (2.0 / 3.0) * u0**1.5 / (u0 - u1)
-    return (2.0 / 3.0) * u1**1.5 / (u1 - u0)
+        scale = max(u0, -u1)
+        positive = u0 / scale
+        negative = -u1 / scale
+        return (
+            (2.0 / 3.0)
+            * math.sqrt(scale)
+            * positive**1.5
+            / (positive + negative)
+        )
+    scale = max(-u0, u1)
+    negative = -u0 / scale
+    positive = u1 / scale
+    return (
+        (2.0 / 3.0)
+        * math.sqrt(scale)
+        * positive**1.5
+        / (positive + negative)
+    )
+
+
+def _wkb_exponent_python(
+    coordinates: Sequence[float],
+    potentials: Sequence[float],
+    energy: float,
+    reduced_mass: float,
+) -> float:
+    integral = 0.0
+    for index in range(1, len(coordinates)):
+        dx = coordinates[index] - coordinates[index - 1]
+        u0 = potentials[index - 1] - energy
+        u1 = potentials[index] - energy
+        integral += dx * _linear_sqrt_integral(u0, u1)
+    return 2.0 * math.sqrt(2.0 * reduced_mass) * integral / HBAR_J_S
 
 
 def wkb_exponent(
@@ -153,25 +217,23 @@ def wkb_exponent(
     potentials = tuple(float(value) for value in potentials_j_per_molecule)
     if len(coordinates) != len(potentials) or len(coordinates) < 2:
         raise ValueError("coordinates and potentials require matching lengths of at least 2")
+    _require_finite(coordinates, "coordinates_m")
+    _require_finite(potentials, "potentials_j_per_molecule")
+    if not math.isfinite(energy_j_per_molecule):
+        raise ValueError("energy must be finite")
+    if not math.isfinite(reduced_mass_kg) or reduced_mass_kg <= 0.0:
+        raise ValueError("reduced mass must be positive and finite")
     if any(right <= left for left, right in zip(coordinates, coordinates[1:])):
         raise ValueError("coordinates must be strictly increasing")
-    if not all(map(math.isfinite, coordinates + potentials + (energy_j_per_molecule, reduced_mass_kg))):
-        raise ValueError("coordinates, potentials, energy and mass must be finite")
-    if reduced_mass_kg <= 0.0:
-        raise ValueError("reduced mass must be positive")
     if HAS_NATIVE:
         return float(
-            _cpp.wkb_exponent(
+            _wkb_cpp.wkb_exponent(
                 coordinates, potentials, float(energy_j_per_molecule), float(reduced_mass_kg)
             )
         )
-    integral = 0.0
-    for index in range(1, len(coordinates)):
-        dx = coordinates[index] - coordinates[index - 1]
-        u0 = potentials[index - 1] - energy_j_per_molecule
-        u1 = potentials[index] - energy_j_per_molecule
-        integral += dx * _linear_sqrt_integral(u0, u1)
-    return 2.0 * math.sqrt(2.0 * reduced_mass_kg) * integral / HBAR_J_S
+    return _wkb_exponent_python(
+        coordinates, potentials, energy_j_per_molecule, reduced_mass_kg
+    )
 
 
 def _semiclassical_probability(action: float) -> float:
@@ -211,7 +273,7 @@ def thermal_wkb_kappa(
         raise ValueError("energy_grid_points must be at least 20")
     if HAS_NATIVE:
         return float(
-            _cpp.thermal_wkb_kappa(
+            _wkb_cpp.thermal_wkb_kappa(
                 coordinates, potentials, float(temperature_k), float(reduced_mass_kg),
                 int(energy_grid_points),
             )
@@ -258,7 +320,8 @@ def beyer_swinehart(
     frequencies_cm1: Iterable[float], grain_cm1: float, grain_count: int
 ) -> np.ndarray:
     frequencies = tuple(float(value) for value in frequencies_cm1)
-    if grain_cm1 <= 0.0 or grain_count <= 0:
+    _require_finite(frequencies, "frequencies_cm1")
+    if not math.isfinite(grain_cm1) or grain_cm1 <= 0.0 or grain_count <= 0:
         raise ValueError("grain_cm1 and grain_count must be positive")
     if HAS_NATIVE:
         return np.asarray(_cpp.beyer_swinehart(frequencies, grain_cm1, grain_count), dtype=float)
