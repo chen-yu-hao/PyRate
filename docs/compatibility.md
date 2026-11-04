@@ -15,11 +15,11 @@
 | 谐振子分区函数与 ZPE | Implemented | 正频率；负频率作为反应坐标排除 |
 | 电子分区函数 | Implemented | 多电子态、能级和简并度 |
 | CTST / TST | Implemented | harmonic RRHO，单/双分子 |
-| canonical VTST / CVT | Implemented | 用户提供的路径分割面；温度依赖自由能瓶颈 |
-| Polyrate 3/5-point `FITMAX` 行为 | Partial | 最多五点多项式精修；需官方路径逐例比对 |
+| canonical VTST / CVT | Implemented | 用户提供的路径分割面；温度依赖自由能瓶颈，局部峰值保护；待官方路径回归 |
+| Polyrate 3/5-point `FITMAX` 行为 | Partial | 目前采用保守三点抛物线局部精修；与官方 FITMAX 3/5-point 行为尚未对齐 |
 | CUS | Planned | 需 spline-unified statistical treatment |
 | Wigner | Implemented | 单一虚频 |
-| ZCT / MEPSAG | Partial | 一维 WKB 内核完成；完整 MEP vibrationally adiabatic profile 待接入 |
+| ZCT / MEPSAG | Partial | 改进了分段 action、阈值和反射近似；尚非 Polyrate ZCT/MEPSAG 的等价实现 |
 | SCT / CD-SCSAG | Planned | 需反应路径曲率和 small-curvature action |
 | LCT / LCG3 / LCG4 | Planned | 需 large-curvature tunneling path |
 | ICVT | Historical only | Polyrate 2023 已移除 ICVT；仅作为旧版本兼容范围，不计入 2023 必选功能 |
@@ -36,7 +36,7 @@
 | Restart files / legacy unit files | Planned | 尚未复现固定文件单元语义 |
 | `fu15` summary reader | Implemented | forward/reverse 第一张速率表 |
 | Polyrate fixed-format output 1:1 | Planned | 当前输出为结构化 JSON/CSV/表格 |
-| 112 个 Polyrate 2023 test runs | Planned | 需要用户本地 reference package；manifest/import 工具已提供 |
+| 112 个 Polyrate 2023 test runs | Planned | 官方分发包和手册链接已核实，尚未完成获取/运行；manifest/import 工具已提供 |
 
 对应的逐温度、逐列数值比较工具与严格失败语义见 [`docs/head-to-head.md`](head-to-head.md)。
 
@@ -52,3 +52,7 @@
 6. 文档清楚说明单位、默认值和不兼容行为。
 
 建议数值门槛：纯代数/分区函数相对误差 `≤1e-10`；路径拟合和数值积分 `≤1e-6`；完整速率对 legacy 文本舍入前数据 `≤1e-4`，对仅有三位有效数字的 `fu15` 表采用 `≤5e-3`。
+
+## P0 数值验证状态（2026-11）
+
+修复分支提供一个非经典反射的势垒顶抛物线延拓近似，不能将其称为已经复现 Polyrate 的全能量透射概率或其 ZCT 算法。必须补充精确 Eckart 解析对照、端点不对称阈值测试、积分收敛测试和官方中间量后才能声明等价。`constants_profile=codata2018` 当前只允许单个固定常数集，拒绝未实现的历史配置。
