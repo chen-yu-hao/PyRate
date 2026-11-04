@@ -77,7 +77,9 @@ double linear_sqrt_integral(const double u0, const double u1) {
         return std::sqrt(std::max(0.0, u0));
     }
     if (u0 > 0.0 && u1 > 0.0) {
-        return (2.0 / 3.0) * (std::pow(u1, 1.5) - std::pow(u0, 1.5)) / delta;
+        const double root0 = std::sqrt(u0);
+        const double root1 = std::sqrt(u1);
+        return (2.0 / 3.0) * (u0 + root0 * root1 + u1) / (root0 + root1);
     }
     if (u0 > 0.0) {
         return (2.0 / 3.0) * std::pow(u0, 1.5) / (u0 - u1);
