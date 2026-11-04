@@ -19,7 +19,11 @@ from .partition import standard_gibbs_energy_kj_mol
 
 @dataclass(frozen=True, slots=True)
 class CvtRate:
-    """Variational bottleneck and its rate constant in SI molar units."""
+    """Variational bottleneck and its rate constant in SI molar units.
+
+    ``fit_points`` is the number of path points behind the refined maximum:
+    1 for the sampled point itself, 3 for the default parabola.
+    """
 
     coordinate: float
     activation_gibbs_kj_mol: float
@@ -105,12 +109,19 @@ def conventional_tst_rate_si(reaction: Reaction, temperature_k: float) -> tuple[
     return delta_g, rate
 
 
-def cvt_rate_si(reaction: Reaction, temperature_k: float) -> CvtRate:
+def cvt_rate_si(
+    reaction: Reaction, temperature_k: float, *, max_fit_points: int = 3
+) -> CvtRate:
     """Return the canonical variational rate from a reaction-path grid.
 
     The generalized free energy of activation is maximized along the path,
-    which is equivalent to minimizing the generalized TST rate.  A local
-    polynomial fit using up to five path points refines the sampled maximum.
+    which is equivalent to minimizing the generalized TST rate.  The sampled
+    maximum ``i`` is refined by the parabola through path points ``i-1, i, i+1``
+    (``max_fit_points=4`` or ``5`` opts in to a higher-degree interpolant).  The
+    refined bottleneck stays inside ``[s[i-1], s[i+1]]`` and its ``ΔG`` exceeds
+    the sampled maximum by at most ``ΔG[i] - min(ΔG[i-1], ΔG[i+1])``; otherwise
+    the sampled point is used (``fit_points == 1``).  See
+    :func:`pyrate.native.refine_maximum`.
     """
 
     if reaction.path is None:
@@ -122,7 +133,9 @@ def cvt_rate_si(reaction: Reaction, temperature_k: float) -> CvtRate:
         )
         for point in reaction.path.points
     ]
-    refined: RefinedMaximum = refine_maximum(coordinates, activation_gibbs)
+    refined: RefinedMaximum = refine_maximum(
+        coordinates, activation_gibbs, max_points=max_fit_points
+    )
     sampled_index = refined.sample_index
     rate = tst_rate_from_activation_gibbs_si(
         refined.value,
