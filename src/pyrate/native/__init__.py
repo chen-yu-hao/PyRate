@@ -13,7 +13,7 @@ from ._loader import HAS_NATIVE, backend_info
 from .dos import beyer_swinehart
 from .fit import RefinedMaximum, refine_maximum
 from .thermo import harmonic_log_partition, wigner_kappa
-from .wkb import thermal_wkb_kappa, wkb_exponent
+from .wkb import semiclassical_transmission, thermal_wkb_kappa, wkb_exponent
 
 __all__ = [
     "HAS_NATIVE",
@@ -22,6 +22,7 @@ __all__ = [
     "beyer_swinehart",
     "harmonic_log_partition",
     "refine_maximum",
+    "semiclassical_transmission",
     "thermal_wkb_kappa",
     "wigner_kappa",
     "wkb_exponent",

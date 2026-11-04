@@ -76,16 +76,42 @@ k_CVT(T) = min_s k_GT(s,T)
 
 ## 5. WKB / ZCT 核心
 
-分段线性势垒的透射指数为：
+分段线性势垒的透射指数（`wkb_exponent`）为：
 
 ```text
-γ(E) = 2/ħ ∫ sqrt(2 μ [V(x)-E]) dx
-P(E) = exp[-γ(E)]
+γ(E) = 2θ(E) = 2/ħ ∫ sqrt(2 μ [V(x)-E]) dx
 ```
 
-积分对每个线性片段的 `sqrt(V-E)` 使用解析积分。canonical 修正用 Simpson 能量积分，并采用移位指数形式避免低温下的上溢/下溢。
+积分对每个线性片段的 `sqrt(V-E)` 使用解析积分。
 
-当前实现是 **一维 zero-curvature building block**。Polyrate 的完整 ZCT 还依赖 MEP 上的振动绝热基态势；SCT/LCT 还需要曲率与 corner-cutting path，不能把本实现误标为这些完整算法。
+透射概率（`semiclassical_transmission`）采用 Polyrate ZCT/SCT 使用的一致半经典形式，并计入势垒以上的非经典反射。记 `V^AG = max(V)`，阈值 `E₀ = max(V[0], V[-1])`：
+
+```text
+P(E) = 0                       E < E₀
+P(E) = 1 / (1 + exp[γ(E)])     E₀ ≤ E ≤ V^AG
+P(E) = 1 − P(2V^AG − E)        V^AG < E < 2V^AG − E₀
+P(E) = 1                       E ≥ 2V^AG − E₀
+```
+
+下限取两侧渐近线的较高者，因此吸能剖面在产物渐近线以下 `P = 0`，κ 与产物平台的截断长度无关。所有能量与剖面能量处于同一绝对标度。
+
+canonical 修正（`thermal_wkb_kappa`）相对于 `V^AG` 处的经典阈值：
+
+```text
+κ(T) = β exp(βV^AG) ∫_{E₀}^{∞} P(E) exp(−βE) dE
+```
+
+令 `δ = V^AG − E`、`Δ = V^AG − E₀`，并把反射区映射回 `[0, Δ]`，得到等价形式：
+
+```text
+κ = β ∫_0^Δ [P(V^AG−δ) e^{βδ} + (1 − P(V^AG−δ)) e^{−βδ}] dδ + e^{−βΔ}
+```
+
+积分对 δ 用复合 Simpson 公式，区间数为 `energy_grid_points`（奇数时加一）。第一项按 `exp(βδ − log(1+e^γ))` 在对数空间求值，低温深隧穿时既不上溢也不下溢；真正超出 double 范围时返回 `+inf`。`Δ ≤ 0`（没有高于两侧渐近线的势垒）时 κ = 1。
+
+数值验收见 `tests/test_tunneling.py`：对称 Eckart 势垒（`θ` 有解析式）在 8001 点分段线性网格、16000 个能量区间下，200–1000 K 的 κ 与独立 Gauss–Legendre 参考的相对误差 ≤1e-7。分段线性剖面的 `γ(E)` 逐点带有随 E 振荡的误差（约 `h^1.5`），能量积分会将其平均掉，所以 κ 的收敛明显好于逐点 `P(E)`。
+
+当前实现是 **一维 zero-curvature building block**。Polyrate 的完整 ZCT 还依赖 MEP 上的振动绝热基态势 `V_a^G(s)`（以及质量标度坐标和 CAG 因子）；本核只接收用户给出的一维剖面。SCT/LCT 还需要曲率与 corner-cutting path，不能把本实现误标为这些完整算法。
 
 ## 6. 线程与可复现性
 
