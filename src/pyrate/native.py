@@ -236,12 +236,12 @@ def wkb_exponent(
     )
 
 
-def _semiclassical_probability(action: float) -> float:
-    """Smooth sub-barrier transmission including nonclassical reflection."""
+def _log_semiclassical_probability(action: float) -> float:
+    """Stable log of smooth transmission for signed semiclassical action."""
 
     if action >= 0.0:
-        return math.exp(-action) / (1.0 + math.exp(-action))
-    return 1.0 / (1.0 + math.exp(action))
+        return -action - math.log1p(math.exp(-action))
+    return -math.log1p(math.exp(action))
 
 
 def thermal_wkb_kappa(
@@ -292,28 +292,44 @@ def thermal_wkb_kappa(
     intervals = energy_grid_points + energy_grid_points % 2
     du = upper_u / intervals
 
-    def integrand(u: float) -> float:
+    peak = max(range(len(shifted)), key=shifted.__getitem__)
+    omega = 0.0
+    if 0 < peak < len(shifted) - 1:
+        x0, x1, x2 = coordinates[peak - 1 : peak + 2]
+        v0, v1, v2 = shifted[peak - 1 : peak + 2]
+        curvature = 2.0 * (
+            (v2 - v1) / (x2 - x1) - (v1 - v0) / (x1 - x0)
+        ) / (x2 - x0)
+        if curvature < 0.0:
+            omega = math.sqrt(-curvature / reduced_mass_kg)
+
+    def log_integrand(u: float) -> float:
         energy = threshold + u / beta
         if energy < barrier:
             action = wkb_exponent(coordinates, shifted, energy, reduced_mass_kg)
         else:
-            # Analytical continuation of the parabolic-top action.  The
-            # curvature is inferred from local second differences.
-            peak = max(range(len(shifted)), key=shifted.__getitem__)
-            if 0 < peak < len(shifted)-1:
-                x0, x1, x2 = coordinates[peak-1:peak+2]
-                v0, v1, v2 = shifted[peak-1:peak+2]
-                curvature = 2.0*((v2-v1)/(x2-x1)-(v1-v0)/(x1-x0))/(x2-x0)
-                omega = math.sqrt(-curvature / reduced_mass_kg) if curvature < 0 else 0.0
-            else:
-                omega = 0.0
-            action = -2.0*math.pi*(energy-barrier)/(HBAR_J_S*omega) if omega > 0 else -math.inf
-        return math.exp(-u) * _semiclassical_probability(action)
+            action = (
+                -2.0 * math.pi * (energy - barrier) / (HBAR_J_S * omega)
+                if omega > 0.0
+                else -math.inf
+            )
+        return -u + _log_semiclassical_probability(action)
 
-    total = integrand(0.0) + integrand(upper_u)
-    for index in range(1, intervals):
-        total += (4.0 if index % 2 else 2.0)*integrand(index*du)
-    return math.exp(min(709.0, beta*height)) * du*total/3.0
+    # Log-sum-exp preserves canonical transmission for high barriers without
+    # clipping the physical rate or underflowing the barrier-top contribution.
+    log_terms = [log_integrand(index * du) for index in range(intervals + 1)]
+    maximum = max(log_terms)
+    if maximum == -math.inf:
+        return 0.0
+    total = math.fsum(
+        (1.0 if i in (0, intervals) else (4.0 if i % 2 else 2.0))
+        * math.exp(value - maximum)
+        for i, value in enumerate(log_terms)
+    )
+    log_kappa = beta * height + math.log(du / 3.0) + maximum + math.log(total)
+    if log_kappa > math.log(float.fromhex("0x1.fffffffffffffp+1023")):
+        return math.inf
+    return math.exp(log_kappa)
 
 
 def beyer_swinehart(
