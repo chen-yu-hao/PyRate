@@ -9,9 +9,9 @@
 - 理想气体标准态下的平动、刚性转子、谐振子与电子分区函数；
 - 单分子和双分子常规过渡态理论（CTST/Eyring）；
 - 沿反应路径最大化广义活化自由能的 canonical VTST/CVT；
-- 最多五点的局部多项式瓶颈精修；
+- 带采样区间约束的三点局部抛物线瓶颈精修；
 - Wigner 隧穿修正；
-- 一维热 WKB / zero-curvature 风格透射修正；
+- 一维热 WKB / zero-curvature 风格透射修正（非经典反射为近似模型，尚未通过官方 reference）；
 - Beyer–Swinehart 振动态密度计数 C++ 内核；
 - 笛卡尔 Hessian 质量加权、平移/转动投影和正规模分析；
 - Polyrate `*GENERAL`、`*REACT1`、`*START`、`*PATH`、`*TUNNEL`、`*RATE` 等区段的保留式解析；
@@ -70,7 +70,7 @@ for row in result.rows:
 
 - 公开输入：能量 `kJ mol⁻¹`、频率 `cm⁻¹`、质量 `amu`、长度 `Å`；
 - 内核：SI，每分子能量用于隧穿积分；
-- 默认气相标准压力：`1 bar`；
+- 默认气相标准压力：`1 bar`；\n- `constants_profile`：目前只接受 `codata2018`，不支持的配置会报错；\n- 原子可传入 `isotope` 质量数，查表返回显式的中性核素质量；
 - 单分子速率：`s⁻¹`；
 - 双分子内部单位：`m³ mol⁻¹ s⁻¹`，可输出 `L mol⁻¹ s⁻¹` 或 `cm³ molecule⁻¹ s⁻¹`；
 - `electronic_energy_kj_mol` 不含零点能；默认由正频率加入谐振零点能；
