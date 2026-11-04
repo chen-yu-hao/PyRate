@@ -7,13 +7,19 @@ import csv
 import io
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Sequence
 
 from .calculation import CalculationResult, calculate_rates
-from .input import LoadedCalculation, load_input, load_toml
+from .input import LoadedCalculation, load_input
 from .legacy import LegacyInput
 from .native import backend_info
+from .numerical_trace import (
+    NumericalTrace,
+    build_numerical_trace,
+    compare_numerical_traces,
+)
 
 
 def _format_optional(value: float | int | None, specifier: str = ".6g") -> str:
@@ -81,21 +87,30 @@ def _write_output(text: str, output: str | None) -> None:
     Path(output).write_text(text, encoding="utf-8")
 
 
-def _run_command(args: argparse.Namespace) -> int:
-    loaded = load_input(args.input)
+def _solvable_input(path: str) -> LoadedCalculation:
+    loaded = load_input(path)
     if isinstance(loaded, LegacyInput):
         raise ValueError(
             "legacy Polyrate files can currently be inspected and validated, but the solver "
             "requires a PyRate TOML file because legacy potential hooks do not contain a "
             "portable energy/frequency model"
         )
-    if args.rate_unit is not None:
-        from dataclasses import replace
+    return loaded
 
-        loaded = replace(
-            loaded,
-            options=replace(loaded.options, output_rate_unit=args.rate_unit),
-        )
+
+def _override_rate_unit(
+    loaded: LoadedCalculation, rate_unit: str | None
+) -> LoadedCalculation:
+    if rate_unit is None:
+        return loaded
+    return replace(
+        loaded,
+        options=replace(loaded.options, output_rate_unit=rate_unit),
+    )
+
+
+def _run_command(args: argparse.Namespace) -> int:
+    loaded = _override_rate_unit(_solvable_input(args.input), args.rate_unit)
     result = calculate_rates(
         loaded.reaction,
         loaded.options,
@@ -109,6 +124,36 @@ def _run_command(args: argparse.Namespace) -> int:
         text = format_table(result)
     _write_output(text, args.output)
     return 0
+
+
+def _trace_command(args: argparse.Namespace) -> int:
+    loaded = _override_rate_unit(_solvable_input(args.input), args.rate_unit)
+    trace = build_numerical_trace(
+        loaded.reaction,
+        loaded.options,
+        name=loaded.name,
+        action_grid_points=args.action_grid_points,
+    )
+    _write_output(
+        json.dumps(trace.as_dict(), indent=2, ensure_ascii=False) + "\n",
+        args.output,
+    )
+    return 0
+
+
+def _compare_trace_command(args: argparse.Namespace) -> int:
+    reference = NumericalTrace.from_dict(
+        json.loads(Path(args.reference).read_text(encoding="utf-8"))
+    )
+    actual = NumericalTrace.from_dict(
+        json.loads(Path(args.actual).read_text(encoding="utf-8"))
+    )
+    report = compare_numerical_traces(reference, actual, strict=args.strict)
+    _write_output(
+        json.dumps(report.as_dict(), indent=2, ensure_ascii=False) + "\n",
+        args.output,
+    )
+    return 0 if report.success else 1
 
 
 def _inspect_command(args: argparse.Namespace) -> int:
@@ -171,6 +216,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="override output unit (SI, L mol^-1 s^-1, cm^3 molecule^-1 s^-1)",
     )
     run_parser.set_defaults(handler=_run_command)
+
+    trace_parser = subparsers.add_parser(
+        "trace",
+        help="emit partition, ZPE, free-energy, action, kappa, and rate diagnostics",
+    )
+    trace_parser.add_argument("input", help="input TOML file")
+    trace_parser.add_argument("-o", "--output", help="output JSON path; default is stdout")
+    trace_parser.add_argument(
+        "--action-grid-points",
+        type=int,
+        default=33,
+        help="number of energy points used for an energy-resolved WKB action trace",
+    )
+    trace_parser.add_argument(
+        "--rate-unit",
+        help="override output rate unit recorded in the trace",
+    )
+    trace_parser.set_defaults(handler=_trace_command)
+
+    compare_parser = subparsers.add_parser(
+        "compare-trace",
+        help="compare a reference and actual staged numerical trace",
+    )
+    compare_parser.add_argument("reference", help="reference trace JSON")
+    compare_parser.add_argument("actual", help="actual trace JSON")
+    compare_parser.add_argument("-o", "--output", help="comparison JSON path")
+    compare_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="also fail when the actual trace contains unreferenced points",
+    )
+    compare_parser.set_defaults(handler=_compare_trace_command)
 
     inspect_parser = subparsers.add_parser(
         "inspect", help="summarize a TOML or legacy Polyrate input"

@@ -16,25 +16,41 @@ from .models import (
 )
 from .native import HAS_NATIVE, backend_info
 from .normal_modes import NormalModeResult, normal_modes
-from .states import vibrational_density_of_states
+from .numerical_trace import (
+    DEFAULT_TRACE_TOLERANCES,
+    NumericalTrace,
+    TraceComparisonReport,
+    TracePoint,
+    TraceTolerance,
+    build_numerical_trace,
+    compare_numerical_traces,
+)
 from .rates import conventional_tst_rate_si, cvt_rate_si
+from .states import vibrational_density_of_states
 
 __all__ = [
     "Atom",
     "CalculationOptions",
     "CalculationResult",
+    "DEFAULT_TRACE_TOLERANCES",
     "ElectronicState",
     "HAS_NATIVE",
     "LoadedCalculation",
     "NormalModeResult",
+    "NumericalTrace",
     "PathPoint",
     "RateRow",
     "Reaction",
     "ReactionPath",
     "Species",
+    "TraceComparisonReport",
+    "TracePoint",
+    "TraceTolerance",
     "TunnelingProfile",
     "backend_info",
+    "build_numerical_trace",
     "calculate_rates",
+    "compare_numerical_traces",
     "conventional_tst_rate_si",
     "cvt_rate_si",
     "load_input",
