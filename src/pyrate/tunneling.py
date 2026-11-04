@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from .constants import AMU_KG, ANGSTROM_M, AVOGADRO_MOL
+from .constants import AMU_KG, ANGSTROM_M, AVOGADRO_MOL, HBAR_J_S
 from .models import Species, TunnelingProfile
 from .native import thermal_wkb_kappa, wigner_kappa, wkb_exponent
 
@@ -63,11 +63,17 @@ def profile_transmission_probability(
             return 1.0
         xl = coordinates_m[peak] - coordinates_m[peak - 1]
         xr = coordinates_m[peak + 1] - coordinates_m[peak]
-        curvature = 2.0 * ((energies_j[peak + 1] - energies_j[peak]) / xr - (energies_j[peak] - energies_j[peak - 1]) / xl) / (xl + xr)
-        omega = math.sqrt(-curvature / (profile.reduced_mass_amu * AMU_KG)) if curvature < 0 else 0.0
+        curvature = 2.0 * (
+            (energies_j[peak + 1] - energies_j[peak]) / xr
+            - (energies_j[peak] - energies_j[peak - 1]) / xl
+        ) / (xl + xr)
+        omega = (
+            math.sqrt(-curvature / (profile.reduced_mass_amu * AMU_KG))
+            if curvature < 0.0
+            else 0.0
+        )
         if omega == 0.0:
             return 1.0
-        from .constants import HBAR_J_S
         action = -2.0 * math.pi * (energy_j - barrier) / (HBAR_J_S * omega)
         return 1.0 / (1.0 + math.exp(action))
     exponent = wkb_exponent(
