@@ -17,10 +17,10 @@
 | 电子分区函数 | Implemented | 多电子态、能级和简并度；legacy 执行目前仅接受零激发能条目 |
 | CTST / TST | Implemented | harmonic RRHO，单/双分子；4 个官方直接频率 legacy 算例已匹配打印的正向 TST 表 |
 | canonical VTST / CVT | Implemented | 用户提供的路径分割面；温度依赖自由能瓶颈；官方 legacy CVT 尚未贯通 |
-| Polyrate 3/5-point `FITMAX` 行为 | Partial | 最多五点多项式精修；需官方路径逐例比对 |
+| Polyrate 3/5-point `FITMAX` 行为 | Partial | 局部三点抛物线精修并限制在相邻采样区间；尚未复现官方 FITMAX 3/5 点 |
 | CUS | Planned | 需 spline-unified statistical treatment |
 | Wigner | Implemented | 单一虚频；legacy Wigner 仅在固定 unit 文件提供可转换虚频时可进入映射 |
-| ZCT / MEPSAG | Partial | 一维 WKB 内核完成；完整 MEP vibrationally adiabatic profile 待接入 |
+| ZCT / MEPSAG | Partial | 一维 WKB action 与反射/阈值修正已有近似实现；尚未实现完整 MEP 和官方 ZCT/MEPSAG 透射概率 |
 | SCT / CD-SCSAG | Planned | 需反应路径曲率和 small-curvature action |
 | LCT / LCG3 / LCG4 | Planned | 需 large-curvature tunneling path |
 | ICVT | Historical only | Polyrate 2023 已移除 ICVT；仅作为旧版本兼容范围，不计入 2023 必选功能 |
@@ -55,3 +55,9 @@
 6. 文档清楚说明单位、默认值和不兼容行为。
 
 建议数值门槛：纯代数/分区函数相对误差 `≤1e-10`；路径拟合和数值积分 `≤1e-6`；完整速率对 legacy 文本舍入前数据 `≤1e-4`。仅有三位有效数字的 compact `fu15` 表采用 `5e-3` 相对容差，并叠加最后一位打印值的半个量化间隔。只匹配打印的最终速率记为阶段性证据，不计为完整数值复现。
+
+## P0 内核更新（待数值验收）
+
+WKB 计算已处理分子尺度焦耳积分误差，支持非经典反射的抛物线势垒顶近似，并使用反应/产物端点阈值。CVT 使用保守的三点局部抛物线插值以避免五点高阶多项式的伪极值。以上变化尚未通过官方 ZCT/CVT 中间量门禁；不要将其视为已实现 Polyrate 完全相同的透射概率或 `FITMAX`。
+
+`constants_profile` 目前只支持 `codata2018` 并拒绝未知配置；显式同位素质量按中性核素质量存储。

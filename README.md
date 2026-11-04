@@ -9,9 +9,9 @@
 - 理想气体标准态下的平动、刚性转子、谐振子与电子分区函数；
 - 单分子和双分子常规过渡态理论（CTST/Eyring）；
 - 沿反应路径最大化广义活化自由能的 canonical VTST/CVT；
-- 最多五点的局部多项式瓶颈精修；
+- 带采样区间约束的三点局部抛物线瓶颈精修；
 - Wigner 隧穿修正；
-- 一维热 WKB / zero-curvature 风格透射修正；
+- 一维热 WKB / zero-curvature 风格透射修正（非经典反射为近似模型，尚未通过官方 reference）；
 - Beyer–Swinehart 振动态密度计数 C++ 内核；
 - 笛卡尔 Hessian 质量加权、平移/转动投影和正规模分析；
 - Polyrate `*GENERAL`、`*REACT1`、`*START`、`*PATH`、`*TUNNEL`、`*RATE` 等区段的保留式解析；
@@ -30,7 +30,7 @@ python -m pyrate native-info
 pytest -q
 ```
 
-安装时会构建 `pyrate._kernels`。调试纯 Python 回退时：
+安装时会构建 `pyrate._kernels` 和 `pyrate._wkb_kernels`。调试纯 Python 回退时：
 
 ```bash
 PYRATE_DISABLE_NATIVE=1 pytest -q
@@ -53,7 +53,7 @@ pyrate inspect path/to/h3tr1.dat --json
 pyrate validate path/to/h3tr1.dat
 ```
 
-解析器会保留未知关键字，而不是静默删除。依赖外部势能面 hook、`fu30/fu31/fu40` 或尚未实现算法的旧输入目前只能检查，不能直接求解。
+解析器会保留未知关键字，而不是静默删除。首批 4 个使用 `fu30`/`fu40` 直接频率数据的官方 legacy TST 算例已在参考审计工作流中成功执行并匹配打印速率表；其余大多数旧输入仍会因尚未实现的语义或算法明确报错，不能直接求解。详见 [`docs/polyrate-2023-head-to-head.md`](docs/polyrate-2023-head-to-head.md)。
 
 ## Python API
 
@@ -71,6 +71,8 @@ for row in result.rows:
 - 公开输入：能量 `kJ mol⁻¹`、频率 `cm⁻¹`、质量 `amu`、长度 `Å`；
 - 内核：SI，每分子能量用于隧穿积分；
 - 默认气相标准压力：`1 bar`；
+- `constants_profile`：目前只接受 `codata2018`，不支持的配置会报错；
+- 原子可传入 `isotope` 质量数，查表返回显式的中性核素质量；
 - 单分子速率：`s⁻¹`；
 - 双分子内部单位：`m³ mol⁻¹ s⁻¹`，可输出 `L mol⁻¹ s⁻¹` 或 `cm³ molecule⁻¹ s⁻¹`；
 - `electronic_energy_kj_mol` 不含零点能；默认由正频率加入谐振零点能；
@@ -82,7 +84,8 @@ for row in result.rows:
 
 ```text
 src/pyrate/          Python 数据模型、解析、热力学、编排和 CLI
-cpp/kernels.cpp      C++17 数值热点与 CPython 扩展
+cpp/kernels.cpp      CVT、分区函数等 C++17 数值热点
+cpp/wkb_kernels.cpp  单独编译的 WKB 数值内核
 examples/            可直接运行的 TOML 样例
 tests/               单元、原生后端和端到端测试
 tools/               参考分发包导入与基准工具
@@ -102,7 +105,7 @@ pyrate run examples/harmonic_cvt.toml --format json -o /tmp/pyrate.json
 python tools/compare_polyrate_rates.py /path/to/case.fu15 /tmp/pyrate.json --rtol 0.005
 ```
 
-工具将匹配温度、检查速率量纲、执行单位换算并输出每项误差；未映射的高级方法不会被误报为通过。该工具的合成测试通过**不代表**已经完成 112 个官方算例的数值验收，说明见 [头对头测试规范](docs/head-to-head.md)。
+工具将匹配温度、检查速率量纲、执行单位换算并输出每项误差；未映射的高级方法不会被误报为通过。已有 4/112 官方 legacy 输入匹配打印的 TST 速率表，但中间量逐层验证仍为 0/112；该工具的合成测试通过**不代表**已经完成 112 个官方算例的数值验收，说明见 [头对头测试规范](docs/head-to-head.md)。
 
 完整模块矩阵和“完成”的数值验收条件见 [`docs/compatibility.md`](docs/compatibility.md)。参考测试工作流见 [`docs/reference-validation.md`](docs/reference-validation.md)。
 

@@ -103,53 +103,71 @@ double thermal_wkb_impl(const std::vector<double>& coordinates_m,
         value -= reference;
     }
     const double barrier = *std::max_element(potentials_j.begin(), potentials_j.end());
-    if (barrier <= 0.0) {
+    const double threshold = std::max(0.0, potentials_j.back());
+    if (barrier <= threshold) {
         return 1.0;
     }
     if (energy_grid_points % 2 != 0) {
         ++energy_grid_points;
     }
-
-    const double beta_barrier = barrier / (kBoltzmann * temperature);
-    if (!std::isfinite(beta_barrier)) {
-        return std::numeric_limits<double>::infinity();
+    const double beta = 1.0 / (kBoltzmann * temperature);
+    const double height = barrier - threshold;
+    const double upper_u = beta * height + 40.0;
+    const double step = upper_u / static_cast<double>(energy_grid_points);
+    const auto peak = static_cast<std::size_t>(
+        std::distance(potentials_j.begin(),
+                      std::max_element(potentials_j.begin(), potentials_j.end())));
+    double omega = 0.0;
+    if (peak > 0 && peak + 1 < potentials_j.size()) {
+        const double xl = coordinates_m[peak] - coordinates_m[peak-1];
+        const double xr = coordinates_m[peak+1] - coordinates_m[peak];
+        const double curvature = 2.0 * (
+            (potentials_j[peak+1]-potentials_j[peak])/xr -
+            (potentials_j[peak]-potentials_j[peak-1])/xl
+        ) / (xl+xr);
+        if (curvature < 0.0) {
+            omega = std::sqrt(-curvature / reduced_mass_kg);
+        }
     }
-
-    std::vector<double> log_values(
-        static_cast<std::size_t>(energy_grid_points + 1), 0.0);
-    double maximum_log = -std::numeric_limits<double>::infinity();
+    const auto log_integrand = [&](const double u) {
+        const double energy = threshold + u / beta;
+        double action;
+        if (energy < barrier) {
+            action = wkb_exponent_impl(coordinates_m, potentials_j, energy, reduced_mass_kg);
+        } else {
+            action = omega > 0.0
+                ? -2.0 * 3.14159265358979323846 * (energy - barrier) / (kHbar * omega)
+                : -std::numeric_limits<double>::infinity();
+        }
+        const double log_probability = action >= 0.0
+            ? -action - std::log1p(std::exp(-action))
+            : -std::log1p(std::exp(action));
+        return -u + log_probability;
+    };
+    std::vector<double> log_values(static_cast<std::size_t>(energy_grid_points + 1));
+    double maximum = -std::numeric_limits<double>::infinity();
     for (int index = 0; index <= energy_grid_points; ++index) {
-        const double fraction = static_cast<double>(index) /
-                                static_cast<double>(energy_grid_points);
-        const double energy = barrier * fraction;
-        const double exponent = wkb_exponent_impl(
-            coordinates_m, potentials_j, energy, reduced_mass_kg);
-        const double log_value = beta_barrier * (1.0 - fraction) - exponent;
-        log_values[static_cast<std::size_t>(index)] = log_value;
-        maximum_log = std::max(maximum_log, log_value);
+        const double value = log_integrand(step * static_cast<double>(index));
+        log_values[static_cast<std::size_t>(index)] = value;
+        maximum = std::max(maximum, value);
     }
-
+    if (maximum == -std::numeric_limits<double>::infinity()) {
+        return 0.0;
+    }
     double scaled_sum = 0.0;
     for (int index = 0; index <= energy_grid_points; ++index) {
-        const double weight =
-            (index == 0 || index == energy_grid_points)
-                ? 1.0
-                : (index % 2 == 0 ? 2.0 : 4.0);
+        const double weight = (index == 0 || index == energy_grid_points)
+            ? 1.0 : (index % 2 ? 4.0 : 2.0);
         scaled_sum += weight * std::exp(
-            log_values[static_cast<std::size_t>(index)] - maximum_log);
+            log_values[static_cast<std::size_t>(index)] - maximum);
     }
-
-    const double log_below = std::log(beta_barrier) -
-                             std::log(3.0 * static_cast<double>(energy_grid_points)) +
-                             maximum_log + std::log(scaled_sum);
-    const double log_max = std::log(std::numeric_limits<double>::max());
-    if (log_below > log_max) {
+    const double log_kappa = beta * height + std::log(step / 3.0) +
+                             maximum + std::log(scaled_sum);
+    if (log_kappa > std::log(std::numeric_limits<double>::max())) {
         return std::numeric_limits<double>::infinity();
     }
-    if (log_below < -745.0) {
-        return 1.0;
-    }
-    return 1.0 + std::exp(log_below);
+    return std::exp(log_kappa);
+
 }
 
 bool validate_wkb_input(const std::vector<double>& coordinates,

@@ -40,6 +40,7 @@ class CalculationResult:
     tunneling: str
     molecularity: int
     standard_pressure_pa: float
+    constants_profile: str
     rows: tuple[RateRow, ...]
 
     def as_dict(self) -> dict[str, Any]:
@@ -49,6 +50,7 @@ class CalculationResult:
             "tunneling": self.tunneling,
             "molecularity": self.molecularity,
             "standard_pressure_pa": self.standard_pressure_pa,
+            "constants_profile": self.constants_profile,
             "rows": [row.as_dict() for row in self.rows],
         }
 
@@ -127,5 +129,6 @@ def calculate_rates(
         tunneling=options.tunneling,
         molecularity=reaction.molecularity,
         standard_pressure_pa=reaction.standard_pressure_pa,
+        constants_profile=reaction.constants_profile,
         rows=tuple(rows),
     )

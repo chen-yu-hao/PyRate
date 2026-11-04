@@ -62,5 +62,5 @@ def test_cvt_finds_refined_free_energy_maximum() -> None:
     )
     result = cvt_rate_si(reaction, 400.0)
     assert math.isclose(result.coordinate, 0.25, abs_tol=2.0e-3)
-    assert result.fit_points == 5
+    assert result.fit_points == 3
     assert result.activation_gibbs_kj_mol > result.sampled_activation_gibbs_kj_mol

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .calculation import CalculationResult, RateRow, calculate_rates
+from .elements import ISOTOPE_MASSES_AMU, isotope_mass_amu
 from .fixed_units import (
     FixedUnitDocument,
     FixedUnitEntry,
@@ -69,6 +70,7 @@ __all__ = [
     "FixedUnitSection",
     "FixedUnitStationaryPoint",
     "HAS_NATIVE",
+    "ISOTOPE_MASSES_AMU",
     "LegacyExecutionAnalysis",
     "LegacyExecutionError",
     "LoadedCalculation",
@@ -93,6 +95,7 @@ __all__ = [
     "cvt_rate_si",
     "forward_reaction_path_degeneracy",
     "load_calculation",
+    "isotope_mass_amu",
     "load_input",
     "load_legacy_calculation",
     "load_toml",

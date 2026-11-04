@@ -17,6 +17,8 @@ jobs:
     env:
       POLYRATE_ARCHIVE_URL: https://zenodo.org/records/8309384/files/polyrate2023.0831.xz?download=1
       POLYRATE_ARCHIVE_MD5: fa1423cc3f4a1279631b05f49228a2d2
+      POLYRATE_MANUAL_URL: https://zenodo.org/records/8309384/files/Polyrate2023_manual_230831.pdf?download=1
+      POLYRATE_MANUAL_MD5: 853e51ff3d50b07736a5d92993ab089c
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +39,14 @@ jobs:
             --output polyrate2023.0831.xz "$POLYRATE_ARCHIVE_URL"
           echo "$POLYRATE_ARCHIVE_MD5  polyrate2023.0831.xz" | md5sum --check --strict
           ls -lh polyrate2023.0831.xz
+
+      - name: Download and verify official Polyrate 2023 manual
+        run: |
+          curl --fail --location --retry 4 --retry-all-errors \
+            --output Polyrate2023_manual_230831.pdf "$POLYRATE_MANUAL_URL"
+          echo "$POLYRATE_MANUAL_MD5  Polyrate2023_manual_230831.pdf" | md5sum --check --strict
+          sha256sum Polyrate2023_manual_230831.pdf | tee polyrate-manual-sha256.txt
+          ls -lh Polyrate2023_manual_230831.pdf
 
       - name: Extract reference distribution
         run: |

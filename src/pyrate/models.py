@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping
 
-from .constants import DEFAULT_STANDARD_PRESSURE_PA
-from .elements import atomic_mass_amu, canonical_symbol
+from .constants import DEFAULT_STANDARD_PRESSURE_PA, validate_constants_profile
+from .elements import atomic_mass_amu, canonical_symbol, isotope_mass_amu
 
 
 def _as_float_tuple(values: Iterable[float] | None) -> tuple[float, ...]:
@@ -25,11 +25,17 @@ class Atom:
     z_angstrom: float
     mass_amu: float | None = None
     label: str | None = None
+    isotope: int | None = None
 
     def __post_init__(self) -> None:
         symbol = canonical_symbol(self.symbol)
         object.__setattr__(self, "symbol", symbol)
-        mass = atomic_mass_amu(symbol) if self.mass_amu is None else float(self.mass_amu)
+        if self.mass_amu is not None:
+            mass = float(self.mass_amu)
+        elif self.isotope is not None:
+            mass = isotope_mass_amu(symbol, self.isotope)
+        else:
+            mass = atomic_mass_amu(symbol)
         if mass <= 0.0:
             raise ValueError("atom mass must be positive")
         object.__setattr__(self, "mass_amu", mass)
@@ -53,6 +59,7 @@ class Atom:
             y_angstrom=float(xyz[1]),
             z_angstrom=float(xyz[2]),
             mass_amu=float(data["mass_amu"]) if data.get("mass_amu") is not None else None,
+            isotope=int(data["isotope"]) if data.get("isotope") is not None else None,
         )
 
 
@@ -125,7 +132,11 @@ class Species:
             raise ValueError(
                 f"species {self.name!r} requires atoms or mass_amu"
             )
-        if not self.atoms and self.moments_of_inertia_amu_a2 is None and self.rotor_type != "atomic":
+        if (
+            not self.atoms
+            and self.moments_of_inertia_amu_a2 is None
+            and self.rotor_type != "atomic"
+        ):
             raise ValueError(
                 f"species {self.name!r} without atoms requires moments_of_inertia_amu_a2 "
                 "or rotor_type = 'atomic'"
@@ -168,7 +179,9 @@ class Species:
         return cls(
             name=str(data.get("name", default_name)),
             atoms=atoms,
-            mass_amu_override=(float(data["mass_amu"]) if data.get("mass_amu") is not None else None),
+            mass_amu_override=(
+                float(data["mass_amu"]) if data.get("mass_amu") is not None else None
+            ),
             electronic_energy_kj_mol=float(
                 data.get("electronic_energy_kj_mol", data.get("energy_kj_mol", 0.0))
             ),
@@ -265,6 +278,7 @@ class Reaction:
     products: tuple[Species, ...] = ()
     path: ReactionPath | None = None
     standard_pressure_pa: float = DEFAULT_STANDARD_PRESSURE_PA
+    constants_profile: str = "codata2018"
 
     def __post_init__(self) -> None:
         reactants = tuple(self.reactants)
@@ -273,6 +287,9 @@ class Reaction:
             raise ValueError("reaction requires at least one reactant")
         if len(reactants) > 2:
             raise NotImplementedError("the current public API supports uni- and bimolecular rates")
+        object.__setattr__(
+            self, "constants_profile", validate_constants_profile(self.constants_profile)
+        )
         if self.standard_pressure_pa <= 0.0:
             raise ValueError("standard pressure must be positive")
         if len(self.transition_state.imaginary_frequencies_cm1) > 1:

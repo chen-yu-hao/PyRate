@@ -11,7 +11,7 @@ import re
 ATOMIC_MASSES_AMU: dict[str, float] = {
     "H": 1.00784,
     "D": 2.01410177812,
-    "T": 3.01604928199,
+    "T": 3.0160492779,
     "He": 4.002602,
     "Li": 6.94,
     "Be": 9.0121831,
@@ -105,3 +105,41 @@ def atomic_mass_amu(label: str) -> float:
         raise ValueError(
             f"no built-in mass for {label!r}; provide mass_amu explicitly"
         ) from exc
+
+# Representative neutral-atom isotopic masses (unified atomic mass units).
+# Values are explicit nuclidic masses, not terrestrial-abundance atomic weights.
+# Source: NIST Atomic Weights and Isotopic Compositions (neutral atoms):
+# https://pml.nist.gov/cgi-bin/Compositions/stand_alone.pl?ascii=ascii
+ISOTOPE_MASSES_AMU: dict[str, float] = {
+    "1H": 1.00782503223, "2H": 2.01410177812, "3H": 3.0160492779,
+    "3He": 3.0160293201, "4He": 4.00260325413,
+    "6Li": 6.0151228874, "7Li": 7.0160034366,
+    "10B": 10.01293695, "11B": 11.00930536,
+    "12C": 12.0, "13C": 13.00335483507, "14C": 14.0032419884,
+    "14N": 14.00307400443, "15N": 15.00010889888,
+    "16O": 15.99491461957, "17O": 16.99913175650, "18O": 17.99915961286,
+    "19F": 18.99840316273,
+    "28Si": 27.97692653465, "29Si": 28.97649466490, "30Si": 29.973770136,
+    "31P": 30.97376199842,
+    "32S": 31.9720711744, "33S": 32.9714589098, "34S": 33.967867004,
+    "35Cl": 34.968852682, "37Cl": 36.965902602,
+    "79Br": 78.9183376, "81Br": 80.9162897,
+    "127I": 126.9044719,
+}
+
+
+def isotope_mass_amu(symbol: str, mass_number: int) -> float:
+    """Return the neutral nuclidic mass; reject unknown isotopes explicitly."""
+
+    canonical = canonical_symbol(symbol)
+    if canonical == "D":
+        canonical = "H"
+        mass_number = 2
+    elif canonical == "T":
+        canonical = "H"
+        mass_number = 3
+    key = f"{int(mass_number)}{canonical}"
+    try:
+        return ISOTOPE_MASSES_AMU[key]
+    except KeyError as exc:
+        raise ValueError(f"unsupported isotope {key}; supply mass_amu explicitly") from exc

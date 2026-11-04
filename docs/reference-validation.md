@@ -33,3 +33,13 @@ The `pyrate.reference` module parses summary tables and supplies relative-error 
 ## Provenance
 
 A reference manifest should record archive version, DOI, file SHA-256, platform/compiler used to generate outputs, and any local changes to potential routines.  Never compare against an output whose build provenance is unknown.
+
+## Verified source locations (not yet benchmarked)
+
+- Official 2023 revision B record: https://zenodo.org/records/8309384
+- Archive: `polyrate2023.0831.xz` (reported MD5 `fa1423cc3f4a1279631b05f49228a2d2`)
+- Manual: `Polyrate2023_manual_230831.pdf` (reported MD5 `853e51ff3d50b07736a5d92993ab089c`)
+- Mendeley program DOI: https://doi.org/10.17632/vpf3y9cbhf.1
+- CPC announcement: https://doi.org/10.1016/j.cpc.2023.108933
+
+PR #6's successful GitHub Actions reference-audit run downloaded the archive, checked its published MD5 and extracted 112 reference cases. The PDF manual has not been downloaded and hashed by this branch; full staged Polyrate numeric equivalence remains unverified. The release article confirms ICVT removal and 1 bar standard-state free energies, not algorithm-by-algorithm PyRate equivalence. Record SHA-256 only after fetching the bytes.

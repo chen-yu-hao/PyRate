@@ -54,3 +54,19 @@ def standard_volume_per_molecule_m3(
     if pressure_pa <= 0.0:
         raise ValueError("pressure must be positive")
     return BOLTZMANN_J_K * temperature_k / pressure_pa
+
+# Available constant sets are explicit, avoiding silent changes to legacy runs.
+# The current physics stack uses module-level CODATA/SI constants throughout;
+# selecting a different profile is rejected until every kernel accepts it.
+CONSTANTS_PROFILES: tuple[str, ...] = ("codata2018",)
+
+
+def validate_constants_profile(profile: str) -> str:
+    """Validate a named, reproducible constants profile."""
+
+    normalized = profile.strip().lower()
+    if normalized not in CONSTANTS_PROFILES:
+        raise ValueError(
+            f"unsupported constants_profile {profile!r}; available: {CONSTANTS_PROFILES}"
+        )
+    return normalized
