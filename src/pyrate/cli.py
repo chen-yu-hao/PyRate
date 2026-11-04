@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .calculation import CalculationResult, calculate_rates
-from .input import LoadedCalculation, load_input
+from .input import LoadedCalculation, load_calculation, load_input
 from .legacy import LegacyInput
+from .legacy_execution import analyze_legacy_execution
 from .native import backend_info
 from .numerical_trace import (
     NumericalTrace,
@@ -59,7 +60,8 @@ def format_table(result: CalculationResult) -> str:
             widths[index] = max(widths[index], len(value))
     lines = [
         f"{result.name}",
-        f"method={result.method}; tunneling={result.tunneling}; unit={result.rows[0].rate_unit}",
+        f"method={result.method}; tunneling={result.tunneling}; "
+        f"unit={result.rows[0].rate_unit}",
         "  ".join(header.ljust(widths[index]) for index, header in enumerate(headers)),
         "  ".join("-" * width for width in widths),
     ]
@@ -88,14 +90,7 @@ def _write_output(text: str, output: str | None) -> None:
 
 
 def _solvable_input(path: str) -> LoadedCalculation:
-    loaded = load_input(path)
-    if isinstance(loaded, LegacyInput):
-        raise ValueError(
-            "legacy Polyrate files can currently be inspected and validated, but the solver "
-            "requires a PyRate TOML file because legacy potential hooks do not contain a "
-            "portable energy/frequency model"
-        )
-    return loaded
+    return load_calculation(path)
 
 
 def _override_rate_unit(
@@ -160,6 +155,7 @@ def _inspect_command(args: argparse.Namespace) -> int:
     loaded = load_input(args.input)
     if isinstance(loaded, LegacyInput):
         payload: dict[str, Any] = loaded.as_dict() if args.full else loaded.summary()
+        payload["execution"] = analyze_legacy_execution(loaded, args.input).as_dict()
     else:
         payload = loaded.summary()
     if args.json:
@@ -177,16 +173,23 @@ def _inspect_command(args: argparse.Namespace) -> int:
 def _validate_command(args: argparse.Namespace) -> int:
     loaded = load_input(args.input)
     if isinstance(loaded, LegacyInput):
-        warnings = loaded.compatibility_warnings()
-        sys.stdout.write("syntax: valid Polyrate-style input\n")
-        if warnings:
-            for warning in warnings:
-                sys.stdout.write(f"warning: {warning}\n")
-        else:
-            sys.stdout.write("compatibility: supported subset\n")
+        analysis = analyze_legacy_execution(loaded, args.input)
+        sys.stdout.write("syntax_status: pass\n")
+        sys.stdout.write(f"semantic_status: {analysis.semantic_status}\n")
+        sys.stdout.write(f"execution_status: {analysis.execution_status}\n")
+        if analysis.fixed_unit is not None:
+            sys.stdout.write(f"fixed_unit: {analysis.fixed_unit}\n")
+        for warning in analysis.warnings:
+            sys.stdout.write(f"warning: {warning}\n")
+        for blocker in analysis.blockers:
+            sys.stdout.write(f"blocker: {blocker}\n")
+        if args.require_executable and not analysis.executable:
+            return 1
     else:
         # Construction performs all structural and physical validation.
-        sys.stdout.write("syntax: valid PyRate TOML input\n")
+        sys.stdout.write("syntax_status: pass\n")
+        sys.stdout.write("semantic_status: mapped\n")
+        sys.stdout.write("execution_status: ready\n")
         sys.stdout.write(
             f"calculation: {loaded.name}; {len(loaded.options.temperatures_k)} temperatures\n"
         )
@@ -205,8 +208,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_parser = subparsers.add_parser("run", help="run a PyRate TOML calculation")
-    run_parser.add_argument("input", help="input TOML file")
+    run_parser = subparsers.add_parser(
+        "run", help="run a PyRate TOML or executable legacy calculation"
+    )
+    run_parser.add_argument("input", help="input TOML or legacy Polyrate file")
     run_parser.add_argument(
         "--format", choices=("table", "json", "csv"), default="table"
     )
@@ -221,7 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
         "trace",
         help="emit partition, ZPE, free-energy, action, kappa, and rate diagnostics",
     )
-    trace_parser.add_argument("input", help="input TOML file")
+    trace_parser.add_argument("input", help="input TOML or executable legacy file")
     trace_parser.add_argument("-o", "--output", help="output JSON path; default is stdout")
     trace_parser.add_argument(
         "--action-grid-points",
@@ -260,9 +265,14 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser.set_defaults(handler=_inspect_command)
 
     validate_parser = subparsers.add_parser(
-        "validate", help="validate a TOML or legacy Polyrate input"
+        "validate", help="validate syntax, semantics, and execution readiness"
     )
     validate_parser.add_argument("input")
+    validate_parser.add_argument(
+        "--require-executable",
+        action="store_true",
+        help="return a non-zero status when semantic execution remains blocked",
+    )
     validate_parser.set_defaults(handler=_validate_command)
 
     native_parser = subparsers.add_parser(

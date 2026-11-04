@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 from .constants import (
     AVOGADRO_MOL,
@@ -44,6 +45,28 @@ def activation_gibbs_kj_mol(
         for reactant in reaction.reactants
     )
     return transition_gibbs - reactant_gibbs
+
+
+def forward_reaction_path_degeneracy(reaction: Reaction) -> float:
+    """Return the multiplicative forward-path degeneracy.
+
+    Modern inputs normally leave this at one.  The legacy converter records
+    Polyrate ``SIGMAF`` explicitly in transition-state metadata rather than
+    folding it into a molecular rotational symmetry number or electronic
+    degeneracy.  This keeps the molecular partition functions physically
+    interpretable while reproducing the legacy rate convention.
+    """
+
+    raw: Any = reaction.transition_state.metadata.get(
+        "reaction_path_degeneracy", 1.0
+    )
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("reaction_path_degeneracy must be a real number") from exc
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError("reaction_path_degeneracy must be finite and positive")
+    return value
 
 
 def log_tst_rate_si(
@@ -102,7 +125,7 @@ def conventional_tst_rate_si(reaction: Reaction, temperature_k: float) -> tuple[
         reaction.molecularity,
         reaction.standard_pressure_pa,
     )
-    return delta_g, rate
+    return delta_g, rate * forward_reaction_path_degeneracy(reaction)
 
 
 def cvt_rate_si(reaction: Reaction, temperature_k: float) -> CvtRate:
@@ -129,7 +152,7 @@ def cvt_rate_si(reaction: Reaction, temperature_k: float) -> CvtRate:
         temperature_k,
         reaction.molecularity,
         reaction.standard_pressure_pa,
-    )
+    ) * forward_reaction_path_degeneracy(reaction)
     return CvtRate(
         coordinate=refined.coordinate,
         activation_gibbs_kj_mol=refined.value,

@@ -13,7 +13,21 @@ from .fixed_units import (
     parse_fixed_unit_text,
     summarize_fixed_unit,
 )
-from .input import LoadedCalculation, load_input, load_toml, parse_toml_data
+from .input import (
+    LoadedCalculation,
+    load_calculation,
+    load_input,
+    load_legacy_calculation,
+    load_toml,
+    parse_toml_data,
+)
+from .legacy_execution import (
+    ConvertedLegacyCalculation,
+    LegacyExecutionAnalysis,
+    LegacyExecutionError,
+    analyze_legacy_execution,
+    convert_legacy_to_models,
+)
 from .models import (
     Atom,
     CalculationOptions,
@@ -35,13 +49,18 @@ from .numerical_trace import (
     build_numerical_trace,
     compare_numerical_traces,
 )
-from .rates import conventional_tst_rate_si, cvt_rate_si
+from .rates import (
+    conventional_tst_rate_si,
+    cvt_rate_si,
+    forward_reaction_path_degeneracy,
+)
 from .states import vibrational_density_of_states
 
 __all__ = [
     "Atom",
     "CalculationOptions",
     "CalculationResult",
+    "ConvertedLegacyCalculation",
     "DEFAULT_TRACE_TOLERANCES",
     "ElectronicState",
     "FixedUnitDocument",
@@ -50,6 +69,8 @@ __all__ = [
     "FixedUnitSection",
     "FixedUnitStationaryPoint",
     "HAS_NATIVE",
+    "LegacyExecutionAnalysis",
+    "LegacyExecutionError",
     "LoadedCalculation",
     "NormalModeResult",
     "NumericalTrace",
@@ -62,13 +83,18 @@ __all__ = [
     "TracePoint",
     "TraceTolerance",
     "TunnelingProfile",
+    "analyze_legacy_execution",
     "backend_info",
     "build_numerical_trace",
     "calculate_rates",
     "compare_numerical_traces",
     "conventional_tst_rate_si",
+    "convert_legacy_to_models",
     "cvt_rate_si",
+    "forward_reaction_path_degeneracy",
+    "load_calculation",
     "load_input",
+    "load_legacy_calculation",
     "load_toml",
     "normal_modes",
     "parse_fixed_unit",

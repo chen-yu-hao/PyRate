@@ -9,16 +9,17 @@
 | Polyrate 能力 | PyRate 0.1 状态 | 当前边界 / 验收条件 |
 |---|---|---|
 | `*GENERAL` 等 section 语法 | Partial | 官方 112/112 主输入可保留区段、block 和未知 keyword；尚未执行全部 keyword 语义 |
-| 原子、几何、单位模型 | Partial | TOML 强类型模型完整；legacy 单位/同位素语义仍需逐关键字映射 |
+| 原子、几何、单位模型 | Partial | TOML 强类型模型完整；legacy 已映射首批直接频率 TST 算例的原子表、几何、Bohr/Å 坐标和默认质量；同位素及更多默认值仍待对齐 |
+| Legacy 语义与执行状态 | Partial | 语法、语义映射和执行状态分开报告；4/112 官方输入可直接构造 typed `Reaction` 并运行，其余输入明确列出 blocker |
 | 理想气体平动分区函数 | Implemented | 1 bar 标准态，单/双分子单位测试 |
 | 刚性转子分区函数 | Implemented | 原子、线性、非线性和对称数 |
 | 谐振子分区函数与 ZPE | Implemented | 正频率；负频率作为反应坐标排除 |
-| 电子分区函数 | Implemented | 多电子态、能级和简并度 |
-| CTST / TST | Implemented | harmonic RRHO，单/双分子 |
-| canonical VTST / CVT | Implemented | 用户提供的路径分割面；温度依赖自由能瓶颈 |
+| 电子分区函数 | Implemented | 多电子态、能级和简并度；legacy 执行目前仅接受零激发能条目 |
+| CTST / TST | Implemented | harmonic RRHO，单/双分子；4 个官方直接频率 legacy 算例已匹配打印的正向 TST 表 |
+| canonical VTST / CVT | Implemented | 用户提供的路径分割面；温度依赖自由能瓶颈；官方 legacy CVT 尚未贯通 |
 | Polyrate 3/5-point `FITMAX` 行为 | Partial | 最多五点多项式精修；需官方路径逐例比对 |
 | CUS | Planned | 需 spline-unified statistical treatment |
-| Wigner | Implemented | 单一虚频 |
+| Wigner | Implemented | 单一虚频；legacy Wigner 仅在固定 unit 文件提供可转换虚频时可进入映射 |
 | ZCT / MEPSAG | Partial | 一维 WKB 内核完成；完整 MEP vibrationally adiabatic profile 待接入 |
 | SCT / CD-SCSAG | Planned | 需反应路径曲率和 small-curvature action |
 | LCT / LCG3 / LCG4 | Planned | 需 large-curvature tunneling path |
@@ -33,13 +34,14 @@
 | VRC-VTST | Planned | loose transition state sampling 尚未实现 |
 | SS-QRRK / pressure dependence | Partial | DOS 基础完成；master equation 与碰撞模型未实现 |
 | Solvent / surface options | Planned | 尚未实现 |
-| Restart files / legacy unit files | Planned | 尚未复现固定文件单元语义 |
-| `fu15` rate-table reader | Implemented | 官方 101/102 输出可结构化读取、共 113 张表；15 个 compact TST 表未打印单位，比较器拒绝猜测；唯一未读文件为空 |
+| Restart files / legacy unit files | Partial | `fu30`/`fu31`/`fu40` 已有保留式读取与通用 stationary-point 转换；直接频率 TST 子集可执行，Hessian-to-mode、路径和 restart 语义尚未完成 |
+| `fu15` rate-table reader | Implemented | 官方 101/102 输出可结构化读取、共 113 张表；15 个 compact TST 表未打印单位，比较器拒绝无上下文的单位猜测；唯一未读文件为空 |
 | Polyrate fixed-format output 1:1 | Planned | 当前输出为结构化 JSON/CSV/表格 |
-| 112 个 Polyrate 2023 test runs | Planned | 审计已接入：语法 112/112；legacy 直接执行 0/112；端到端数值复现 0/112 |
+| 112 个 Polyrate 2023 test runs | Partial | 语法 112/112；legacy 直接执行 4/112；打印的正向 TST 速率表匹配 4/112；完整中间量加最终速率复现仍为 0/112 |
 
 完整实测结果见 [`docs/polyrate-2023-head-to-head.md`](polyrate-2023-head-to-head.md)；
-逐温度、逐列数值比较工具与严格失败语义见 [`docs/head-to-head.md`](head-to-head.md)。
+逐温度、逐列数值比较工具与严格失败语义见 [`docs/head-to-head.md`](head-to-head.md)；
+当前可执行 legacy 子集见 [`docs/legacy-execution.md`](legacy-execution.md)。
 
 ## “1:1 完成”的定义
 
@@ -47,9 +49,9 @@
 
 1. 对应 legacy keyword 可解析并执行；
 2. 与 Polyrate reference run 使用相同物理模型；
-3. 关键中间量（分区函数、`ΔG(s)`、action、瓶颈位置）有回归测试；
+3. 关键中间量（分区函数、ZPE、`ΔG(s)`、action、瓶颈位置）有回归测试；
 4. 最终速率在预先声明的误差容限内；
 5. 原生和 Python 回退结果一致；
 6. 文档清楚说明单位、默认值和不兼容行为。
 
-建议数值门槛：纯代数/分区函数相对误差 `≤1e-10`；路径拟合和数值积分 `≤1e-6`；完整速率对 legacy 文本舍入前数据 `≤1e-4`，对仅有三位有效数字的 `fu15` 表采用 `≤5e-3`。
+建议数值门槛：纯代数/分区函数相对误差 `≤1e-10`；路径拟合和数值积分 `≤1e-6`；完整速率对 legacy 文本舍入前数据 `≤1e-4`。仅有三位有效数字的 compact `fu15` 表采用 `5e-3` 相对容差，并叠加最后一位打印值的半个量化间隔。只匹配打印的最终速率记为阶段性证据，不计为完整数值复现。

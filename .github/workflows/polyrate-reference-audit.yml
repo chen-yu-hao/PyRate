@@ -65,6 +65,17 @@ jobs:
             --output reference-report/fixed-unit-validation.json
           cat reference-report/fixed-unit-validation.json
 
+      - name: Execute mapped legacy TST subset
+        run: |
+          python tools/validate_core_legacy_execution.py \
+            reference-report/core-reference-bundle.json \
+            --output reference-report/legacy-execution-validation.json \
+            --expected-executable 4 \
+            --expected-matches 4 \
+            --audit-report reference-report/report.json \
+            --case-manifest reference-report/case-manifest.json
+          cat reference-report/report.md
+
       - name: Run PyRate test suite
         run: pytest -q
 

@@ -1,4 +1,4 @@
-"""Modern TOML input loading and validation."""
+"""Modern TOML input loading and validated legacy execution mapping."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from typing import Any, Mapping
 
 from .constants import BAR_PA
 from .legacy import LegacyInput, load_legacy
+from .legacy_execution import convert_legacy_to_models
 from .models import (
     CalculationOptions,
     PathPoint,
@@ -33,7 +34,11 @@ class LoadedCalculation:
 
     def summary(self) -> dict[str, Any]:
         return {
-            "format": "pyrate-toml",
+            "format": (
+                "pyrate-toml"
+                if self.source is None or self.source.endswith(".toml")
+                else "polyrate-legacy-executable-subset"
+            ),
             "source": self.source,
             "name": self.name,
             "reactants": [species.name for species in self.reaction.reactants],
@@ -145,7 +150,33 @@ def load_toml(path: str | Path) -> LoadedCalculation:
     return parse_toml_data(data, source=str(source))
 
 
+def load_legacy_calculation(path: str | Path) -> LoadedCalculation:
+    """Load a legacy deck only when all required semantics are mapped."""
+
+    source = Path(path)
+    document = load_legacy(source)
+    converted = convert_legacy_to_models(document, source)
+    return LoadedCalculation(
+        name=converted.name,
+        reaction=converted.reaction,
+        options=converted.options,
+        raw=converted.raw,
+        source=str(source),
+    )
+
+
+def load_calculation(path: str | Path) -> LoadedCalculation:
+    """Load either native TOML or the executable Polyrate legacy subset."""
+
+    source = Path(path)
+    if source.suffix.lower() == ".toml":
+        return load_toml(source)
+    return load_legacy_calculation(source)
+
+
 def load_input(path: str | Path) -> LoadedCalculation | LegacyInput:
+    """Load TOML as a calculation and legacy input as a retaining syntax tree."""
+
     source = Path(path)
     if source.suffix.lower() == ".toml":
         return load_toml(source)
