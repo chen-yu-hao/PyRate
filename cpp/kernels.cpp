@@ -101,16 +101,6 @@ double wkb_exponent_impl(const std::vector<double>& coordinates_m,
     return (2.0 / kHbar) * std::sqrt(2.0 * reduced_mass_kg) * integral;
 }
 
-double safe_exp(const double exponent) {
-    if (exponent < -745.0) {
-        return 0.0;
-    }
-    if (exponent > 709.0) {
-        return std::numeric_limits<double>::infinity();
-    }
-    return std::exp(exponent);
-}
-
 double thermal_wkb_impl(const std::vector<double>& coordinates_m,
                         std::vector<double> potentials_j,
                         const double temperature,
@@ -167,63 +157,6 @@ double thermal_wkb_impl(const std::vector<double>& coordinates_m,
         sum += (index % 2 ? 4.0 : 2.0) * integrand(step * index);
     }
     return std::exp(std::min(709.0, beta * height)) * step * sum / 3.0;
-}
-
-bool solve_linear_system(std::vector<std::vector<double>>& matrix,
-                         std::vector<double>& rhs,
-                         std::vector<double>& solution) {
-    const std::size_t n = matrix.size();
-    for (std::size_t pivot = 0; pivot < n; ++pivot) {
-        std::size_t best = pivot;
-        for (std::size_t row = pivot + 1; row < n; ++row) {
-            if (std::abs(matrix[row][pivot]) > std::abs(matrix[best][pivot])) {
-                best = row;
-            }
-        }
-        if (std::abs(matrix[best][pivot]) < 1.0e-14) {
-            return false;
-        }
-        if (best != pivot) {
-            std::swap(matrix[best], matrix[pivot]);
-            std::swap(rhs[best], rhs[pivot]);
-        }
-        const double diagonal = matrix[pivot][pivot];
-        for (std::size_t column = pivot; column < n; ++column) {
-            matrix[pivot][column] /= diagonal;
-        }
-        rhs[pivot] /= diagonal;
-        for (std::size_t row = 0; row < n; ++row) {
-            if (row == pivot) {
-                continue;
-            }
-            const double factor = matrix[row][pivot];
-            for (std::size_t column = pivot; column < n; ++column) {
-                matrix[row][column] -= factor * matrix[pivot][column];
-            }
-            rhs[row] -= factor * rhs[pivot];
-        }
-    }
-    solution = rhs;
-    return true;
-}
-
-double polynomial_value(const std::vector<double>& coefficients, const double x) {
-    double result = 0.0;
-    for (auto iterator = coefficients.rbegin(); iterator != coefficients.rend(); ++iterator) {
-        result = result * x + *iterator;
-    }
-    return result;
-}
-
-double polynomial_derivative(const std::vector<double>& coefficients, const double x) {
-    if (coefficients.size() <= 1) {
-        return 0.0;
-    }
-    double result = 0.0;
-    for (std::size_t degree = coefficients.size() - 1; degree > 0; --degree) {
-        result = result * x + static_cast<double>(degree) * coefficients[degree];
-    }
-    return result;
 }
 
 struct RefinedMaximum {
