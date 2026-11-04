@@ -8,7 +8,7 @@
 
 | Polyrate 能力 | PyRate 0.1 状态 | 当前边界 / 验收条件 |
 |---|---|---|
-| `*GENERAL` 等 section 语法 | Partial | 区段、block、未知 keyword 均保留；尚未执行所有 keyword 语义 |
+| `*GENERAL` 等 section 语法 | Partial | 官方 112/112 主输入可保留区段、block 和未知 keyword；尚未执行全部 keyword 语义 |
 | 原子、几何、单位模型 | Partial | TOML 强类型模型完整；legacy 单位/同位素语义仍需逐关键字映射 |
 | 理想气体平动分区函数 | Implemented | 1 bar 标准态，单/双分子单位测试 |
 | 刚性转子分区函数 | Implemented | 原子、线性、非线性和对称数 |
@@ -34,11 +34,12 @@
 | SS-QRRK / pressure dependence | Partial | DOS 基础完成；master equation 与碰撞模型未实现 |
 | Solvent / surface options | Planned | 尚未实现 |
 | Restart files / legacy unit files | Planned | 尚未复现固定文件单元语义 |
-| `fu15` summary reader | Implemented | forward/reverse 第一张速率表 |
+| `fu15` rate-table reader | Implemented | 官方 101/102 输出可结构化读取、共 113 张表；15 个 compact TST 表未打印单位，比较器拒绝猜测；唯一未读文件为空 |
 | Polyrate fixed-format output 1:1 | Planned | 当前输出为结构化 JSON/CSV/表格 |
-| 112 个 Polyrate 2023 test runs | Planned | 需要用户本地 reference package；manifest/import 工具已提供 |
+| 112 个 Polyrate 2023 test runs | Planned | 审计已接入：语法 112/112；legacy 直接执行 0/112；端到端数值复现 0/112 |
 
-对应的逐温度、逐列数值比较工具与严格失败语义见 [`docs/head-to-head.md`](head-to-head.md)。
+完整实测结果见 [`docs/polyrate-2023-head-to-head.md`](polyrate-2023-head-to-head.md)；
+逐温度、逐列数值比较工具与严格失败语义见 [`docs/head-to-head.md`](head-to-head.md)。
 
 ## “1:1 完成”的定义
 
