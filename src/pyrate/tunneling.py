@@ -54,6 +54,9 @@ def profile_transmission_probability(
     )
     energy_j = (energy_kj_mol - reference) * 1000.0 / AVOGADRO_MOL
     barrier = max(energies_j)
+    threshold = max(energies_j[0], energies_j[-1])
+    if energy_j <= threshold:
+        return 0.0
     if energy_j >= barrier:
         peak = max(range(len(energies_j)), key=energies_j.__getitem__)
         if peak == 0 or peak == len(energies_j) - 1:
