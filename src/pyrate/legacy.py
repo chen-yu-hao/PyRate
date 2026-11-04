@@ -8,9 +8,10 @@ small typed accessors.  Unknown input is never silently discarded.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 class LegacyParseError(ValueError):
@@ -38,7 +39,9 @@ _BLOCK_KEYWORDS = {
     "MOMENTS",
 }
 
-_SUPPORTED_SECTIONS = {
+# Sections whose keywords the TOML solver understands in principle.  Every other
+# section is retained verbatim but reported as parsed-but-not-executable.
+_RECOGNIZED_SECTIONS = {
     "GENERAL",
     "REACT1",
     "REACT2",
@@ -175,7 +178,7 @@ class LegacyInput:
     def compatibility_warnings(self) -> tuple[str, ...]:
         warnings: list[str] = []
         unsupported_sections = sorted(
-            {section.name for section in self.sections if section.name not in _SUPPORTED_SECTIONS}
+            {section.name for section in self.sections if section.name not in _RECOGNIZED_SECTIONS}
         )
         if unsupported_sections:
             warnings.append(

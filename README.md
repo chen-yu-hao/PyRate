@@ -82,7 +82,7 @@ for row in result.rows:
 
 ```text
 src/pyrate/          Python 数据模型、解析、热力学、编排和 CLI
-cpp/kernels.cpp      C++17 数值热点与 CPython 扩展
+cpp/                 C++17 数值热点（按领域拆分）与 CPython 扩展
 examples/            可直接运行的 TOML 样例
 tests/               单元、原生后端和端到端测试
 tools/               参考分发包导入与基准工具

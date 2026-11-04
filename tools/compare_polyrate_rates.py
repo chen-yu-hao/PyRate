@@ -27,7 +27,9 @@ def main() -> int:
     parser.add_argument("--column", action="append", default=[], metavar="REF=FIELD",
                         help="explicit map, e.g. CVT=k_cvt; repeatable (defaults TST, CVT)")
     parser.add_argument("--rtol", type=float, default=5.0e-3)
-    parser.add_argument("--strict", action="store_true", help="fail on any unmapped reference column")
+    parser.add_argument(
+        "--strict", action="store_true", help="fail on any unmapped reference column"
+    )
     parser.add_argument("--output", type=Path, help="optional JSON report file")
     args = parser.parse_args()
 

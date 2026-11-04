@@ -7,11 +7,12 @@ import csv
 import io
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from .calculation import CalculationResult, calculate_rates
-from .input import LoadedCalculation, load_input, load_toml
+from .input import load_input
 from .legacy import LegacyInput
 from .native import backend_info
 
@@ -33,9 +34,9 @@ def format_table(result: CalculationResult) -> str:
         "κ",
         "k_final",
     ]
-    rows: list[list[str]] = []
+    cells: list[list[str]] = []
     for row in result.rows:
-        rows.append(
+        cells.append(
             [
                 f"{row.temperature_k:.3f}",
                 f"{row.activation_gibbs_tst_kj_mol:.6f}",
@@ -48,8 +49,8 @@ def format_table(result: CalculationResult) -> str:
             ]
         )
     widths = [len(header) for header in headers]
-    for row in rows:
-        for index, value in enumerate(row):
+    for cells_row in cells:
+        for index, value in enumerate(cells_row):
             widths[index] = max(widths[index], len(value))
     lines = [
         f"{result.name}",
@@ -59,7 +60,7 @@ def format_table(result: CalculationResult) -> str:
     ]
     lines.extend(
         "  ".join(value.rjust(widths[index]) for index, value in enumerate(row))
-        for row in rows
+        for row in cells
     )
     return "\n".join(lines) + "\n"
 

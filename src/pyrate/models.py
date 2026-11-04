@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 from .constants import DEFAULT_STANDARD_PRESSURE_PA
 from .elements import atomic_mass_amu, canonical_symbol
@@ -38,11 +39,18 @@ class Atom:
         object.__setattr__(self, "z_angstrom", float(self.z_angstrom))
 
     @property
+    def mass(self) -> float:
+        """Resolved mass in amu (``mass_amu`` after the element default is applied)."""
+
+        assert self.mass_amu is not None
+        return self.mass_amu
+
+    @property
     def coordinates_angstrom(self) -> tuple[float, float, float]:
         return (self.x_angstrom, self.y_angstrom, self.z_angstrom)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "Atom":
+    def from_mapping(cls, data: Mapping[str, Any]) -> Atom:
         xyz = data.get("xyz") or data.get("coordinates_angstrom")
         if xyz is None or len(xyz) != 3:
             raise ValueError("each atom requires xyz = [x, y, z]")
@@ -70,7 +78,7 @@ class ElectronicState:
             raise ValueError("electronic-state relative energy cannot be negative")
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "ElectronicState":
+    def from_mapping(cls, data: Mapping[str, Any]) -> ElectronicState:
         return cls(
             degeneracy=int(data.get("degeneracy", 1)),
             energy_kj_mol=float(data.get("energy_kj_mol", 0.0)),
@@ -125,7 +133,11 @@ class Species:
             raise ValueError(
                 f"species {self.name!r} requires atoms or mass_amu"
             )
-        if not self.atoms and self.moments_of_inertia_amu_a2 is None and self.rotor_type != "atomic":
+        if (
+            not self.atoms
+            and self.moments_of_inertia_amu_a2 is None
+            and self.rotor_type != "atomic"
+        ):
             raise ValueError(
                 f"species {self.name!r} without atoms requires moments_of_inertia_amu_a2 "
                 "or rotor_type = 'atomic'"
@@ -135,7 +147,7 @@ class Species:
     def mass_amu(self) -> float:
         if self.mass_amu_override is not None:
             return float(self.mass_amu_override)
-        return sum(float(atom.mass_amu) for atom in self.atoms)
+        return sum(atom.mass for atom in self.atoms)
 
     @property
     def imaginary_frequencies_cm1(self) -> tuple[float, ...]:
@@ -146,9 +158,10 @@ class Species:
         return tuple(value for value in self.frequencies_cm1 if value > 0.0)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], default_name: str = "species") -> "Species":
+    def from_mapping(cls, data: Mapping[str, Any], default_name: str = "species") -> Species:
         atoms = tuple(Atom.from_mapping(item) for item in data.get("atoms", ()))
         states_data = data.get("electronic_states")
+        states: tuple[ElectronicState, ...]
         if states_data is None:
             states = (
                 ElectronicState(
@@ -168,7 +181,9 @@ class Species:
         return cls(
             name=str(data.get("name", default_name)),
             atoms=atoms,
-            mass_amu_override=(float(data["mass_amu"]) if data.get("mass_amu") is not None else None),
+            mass_amu_override=(
+                float(data["mass_amu"]) if data.get("mass_amu") is not None else None
+            ),
             electronic_energy_kj_mol=float(
                 data.get("electronic_energy_kj_mol", data.get("energy_kj_mol", 0.0))
             ),
@@ -197,7 +212,7 @@ class PathPoint:
         object.__setattr__(self, "coordinate", float(self.coordinate))
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], index: int) -> "PathPoint":
+    def from_mapping(cls, data: Mapping[str, Any], index: int) -> PathPoint:
         return cls(
             coordinate=float(data["coordinate"]),
             dividing_surface=Species.from_mapping(data, default_name=f"path-{index}"),
@@ -237,7 +252,7 @@ class TunnelingProfile:
         energies = _as_float_tuple(self.energies_kj_mol)
         if len(coordinates) != len(energies) or len(coordinates) < 3:
             raise ValueError("tunneling profile requires matching arrays with at least 3 points")
-        if any(b <= a for a, b in zip(coordinates, coordinates[1:])):
+        if any(b <= a for a, b in zip(coordinates, coordinates[1:], strict=False)):
             raise ValueError("tunneling coordinates must be strictly increasing")
         if self.reduced_mass_amu <= 0.0:
             raise ValueError("reduced_mass_amu must be positive")
@@ -247,7 +262,7 @@ class TunnelingProfile:
         object.__setattr__(self, "energies_kj_mol", energies)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "TunnelingProfile":
+    def from_mapping(cls, data: Mapping[str, Any]) -> TunnelingProfile:
         return cls(
             coordinates_angstrom=tuple(float(value) for value in data["coordinates_angstrom"]),
             energies_kj_mol=tuple(float(value) for value in data["energies_kj_mol"]),
@@ -305,7 +320,7 @@ class CalculationOptions:
             raise ValueError("method must be tst or cvt")
         if tunneling not in {"none", "wigner", "wkb", "zct"}:
             raise ValueError("tunneling must be none, wigner, wkb, or zct")
-        if method == "cvt" and self.output_rate_unit == "":
+        if not self.output_rate_unit.strip():
             raise ValueError("output_rate_unit cannot be empty")
         if tunneling in {"wkb", "zct"} and self.tunneling_profile is None:
             raise ValueError("wkb/zct tunneling requires a tunneling profile")

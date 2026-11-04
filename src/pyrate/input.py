@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-try:
+import sys
+
+if sys.version_info >= (3, 11):
     import tomllib
-except ModuleNotFoundError:  # Python 3.10
+else:  # Python 3.10
     import tomli as tomllib
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from .constants import BAR_PA
 from .legacy import LegacyInput, load_legacy

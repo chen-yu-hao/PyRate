@@ -13,16 +13,23 @@ PyRate 不机械翻译 Fortran 全局数组，而是把 Polyrate 的职责拆成
 
 ## 2. Python / C++ 边界
 
-`cpp/kernels.cpp` 当前提供：
+原生扩展 `pyrate._kernels` 按数值领域拆成多个翻译单元，`src/pyrate/native/` 下有一一对应的 Python 模块：
 
-- 谐振子 `log(q_vib)` 批处理；
-- Wigner 系数；
-- 最多五点的局部极值精修；
-- 分段线性势垒的 WKB action exponent；
-- canonical thermal WKB 积分；
-- Beyer–Swinehart 状态计数。
+| 领域 | C++ | Python | 内容 |
+|---|---|---|---|
+| thermo | `cpp/thermo.cpp` | `native/thermo.py` | 谐振子 `log(q_vib)`、Wigner 系数 |
+| fit | `cpp/fit.cpp` | `native/fit.py` | CVT 局部极值精修 |
+| wkb | `cpp/wkb.cpp` | `native/wkb.py` | 分段线性势垒 WKB 作用量、canonical 透射积分 |
+| dos | `cpp/dos.cpp` | `native/dos.py` | Beyer–Swinehart 状态计数 |
 
-C++ 函数在读取 Python 序列后释放 GIL 执行长循环。`src/pyrate/native.py` 是唯一公共桥接层；导入扩展失败时调用等价 Python 算法。
+`cpp/common.hpp` 存放常数和序列转换。每个翻译单元导出一张以空项结尾的 `PyMethodDef` 表，由 `cpp/module.cpp` 在初始化时逐一注册，所以新增内核不需要改动其他领域的文件。
+
+每个 Python 模块提供两类函数：
+
+- 公共函数 `<name>`：只做一次输入校验，然后分派到 C++ 或 Python；
+- 纯 Python 参考实现 `py_<name>`：作为回退，也用于 `tests/test_parity_*.py` 的同进程跨后端比较。
+
+C++ 函数在读取 Python 序列后释放 GIL 执行长循环。扩展无法导入，或设置了 `PYRATE_DISABLE_NATIVE=1` 时，使用 Python 实现。
 
 正规模的对称本征问题交给 NumPy/LAPACK；质量加权、刚体空间构造和投影逻辑保留在 `normal_modes.py`，便于审计。
 

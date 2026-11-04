@@ -23,9 +23,10 @@ class RotorGeometry:
 def center_of_mass_angstrom(atoms: tuple[Atom, ...]) -> FloatArray:
     if not atoms:
         raise ValueError("at least one atom is required")
-    masses = np.asarray([atom.mass_amu for atom in atoms], dtype=float)
+    masses = np.asarray([atom.mass for atom in atoms], dtype=np.float64)
     coordinates = np.asarray([atom.coordinates_angstrom for atom in atoms], dtype=float)
-    return np.sum(coordinates * masses[:, None], axis=0) / masses.sum()
+    center: FloatArray = np.sum(coordinates * masses[:, None], axis=0) / masses.sum()
+    return center
 
 
 def inertia_tensor_amu_a2(atoms: tuple[Atom, ...]) -> FloatArray:
@@ -34,13 +35,12 @@ def inertia_tensor_amu_a2(atoms: tuple[Atom, ...]) -> FloatArray:
     if not atoms:
         raise ValueError("at least one atom is required")
     center = center_of_mass_angstrom(atoms)
-    tensor = np.zeros((3, 3), dtype=float)
+    tensor: FloatArray = np.zeros((3, 3), dtype=np.float64)
+    identity: FloatArray = np.eye(3, dtype=np.float64)
     for atom in atoms:
-        vector = np.asarray(atom.coordinates_angstrom, dtype=float) - center
+        vector = np.asarray(atom.coordinates_angstrom, dtype=np.float64) - center
         radius_squared = float(np.dot(vector, vector))
-        tensor += float(atom.mass_amu) * (
-            radius_squared * np.eye(3, dtype=float) - np.outer(vector, vector)
-        )
+        tensor = tensor + atom.mass * (radius_squared * identity - np.outer(vector, vector))
     return tensor
 
 
