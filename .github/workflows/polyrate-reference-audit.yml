@@ -52,6 +52,12 @@ jobs:
             --archive-md5 "$POLYRATE_ARCHIVE_MD5"
           cat reference-report/report.md
 
+      - name: Export core legacy reference bundle
+        run: |
+          python tools/export_core_reference_bundle.py \
+            reference-dist reference-report/report.json \
+            --output reference-report/core-reference-bundle.json
+
       - name: Run PyRate test suite
         run: pytest -q
 
