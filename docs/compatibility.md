@@ -9,17 +9,17 @@
 | Polyrate 能力 | PyRate 0.1 状态 | 当前边界 / 验收条件 |
 |---|---|---|
 | `*GENERAL` 等 section 语法 | Partial | 区段、block、未知 keyword 均保留；尚未执行所有 keyword 语义 |
-| 原子、几何、单位模型 | Partial | TOML 强类型模型完整；legacy 单位/同位素语义仍需逐关键字映射 |
+| 原子、几何、单位模型 | Partial | TOML 强类型模型完整；默认丰度最高同位素质量（AME2020，`mass_model` 可切换平均原子量）；legacy 单位/同位素语义仍需逐关键字映射；常数仍为 CODATA 2018，Polyrate 内部常数 profile 待提取 |
 | 理想气体平动分区函数 | Implemented | 1 bar 标准态，单/双分子单位测试 |
 | 刚性转子分区函数 | Implemented | 原子、线性、非线性和对称数 |
 | 谐振子分区函数与 ZPE | Implemented | 正频率；负频率作为反应坐标排除 |
 | 电子分区函数 | Implemented | 多电子态、能级和简并度 |
 | CTST / TST | Implemented | harmonic RRHO，单/双分子 |
 | canonical VTST / CVT | Implemented | 用户提供的路径分割面；温度依赖自由能瓶颈 |
-| Polyrate 3/5-point `FITMAX` 行为 | Partial | 最多五点多项式精修；需官方路径逐例比对 |
+| Polyrate 3/5-point `FITMAX` 行为 | Partial | 默认有界三点抛物线，可选四/五点；坐标限定在相邻采样点之间，超调 ≤ 较低邻点落差，否则回退。Polyrate 实际插值方式待与手册核对 |
 | CUS | Planned | 需 spline-unified statistical treatment |
 | Wigner | Implemented | 单一虚频 |
-| ZCT / MEPSAG | Partial | 一维 WKB 内核完成；完整 MEP vibrationally adiabatic profile 待接入 |
+| ZCT / MEPSAG | Partial | 一维一致半经典内核（含非经典反射与 `E₀` 阈值）完成，对称 Eckart 解析参考误差 ≤1e-7；完整 MEP `V_a^G(s)`、质量标度坐标与 CAG 因子待接入 |
 | SCT / CD-SCSAG | Planned | 需反应路径曲率和 small-curvature action |
 | LCT / LCG3 / LCG4 | Planned | 需 large-curvature tunneling path |
 | ICVT | Historical only | Polyrate 2023 已移除 ICVT；仅作为旧版本兼容范围，不计入 2023 必选功能 |
