@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from pyrate.constants import AMU_KG, ANGSTROM_M, AVOGADRO_MOL, BOLTZMANN_J_K
+from pyrate.constants import AMU_KG, ANGSTROM_M, AVOGADRO_MOL
 from pyrate.elements import isotope_mass_amu
 from pyrate.native import refine_maximum, thermal_wkb_kappa, wkb_exponent
 from pyrate.models import Atom, Reaction, Species
