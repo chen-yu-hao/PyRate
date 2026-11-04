@@ -129,5 +129,6 @@ def calculate_rates(
         tunneling=options.tunneling,
         molecularity=reaction.molecularity,
         standard_pressure_pa=reaction.standard_pressure_pa,
+        constants_profile=reaction.constants_profile,
         rows=tuple(rows),
     )
