@@ -119,32 +119,52 @@ double thermal_wkb_impl(const std::vector<double>& coordinates_m,
         value -= reference;
     }
     const double barrier = *std::max_element(potentials_j.begin(), potentials_j.end());
-    if (barrier <= 0.0) {
+    const double threshold = std::max(0.0, potentials_j.back());
+    if (barrier <= threshold) {
         return 1.0;
     }
-
     if (energy_grid_points % 2 != 0) {
         ++energy_grid_points;
     }
     const double beta = 1.0 / (kBoltzmann * temperature);
-    const double step = barrier / static_cast<double>(energy_grid_points);
-
-    auto integrand = [&](const double energy) {
-        const double exponent = wkb_exponent_impl(
-            coordinates_m, potentials_j, energy, reduced_mass_kg);
-        // This is the integrand after multiplying the canonical transmission
-        // integral by beta * exp(beta * V_barrier).  It avoids subtracting two
-        // exponentially small numbers at low temperature.
-        return beta * safe_exp(beta * (barrier - energy) - exponent);
-    };
-
-    double sum = integrand(0.0) + integrand(barrier);
-    for (int index = 1; index < energy_grid_points; ++index) {
-        const double energy = step * static_cast<double>(index);
-        sum += (index % 2 == 0 ? 2.0 : 4.0) * integrand(energy);
+    const double height = barrier - threshold;
+    const double upper_u = beta * height + 40.0;
+    const double step = upper_u / static_cast<double>(energy_grid_points);
+    const auto peak = static_cast<std::size_t>(
+        std::distance(potentials_j.begin(),
+                      std::max_element(potentials_j.begin(), potentials_j.end())));
+    double omega = 0.0;
+    if (peak > 0 && peak + 1 < potentials_j.size()) {
+        const double xl = coordinates_m[peak] - coordinates_m[peak-1];
+        const double xr = coordinates_m[peak+1] - coordinates_m[peak];
+        const double curvature = 2.0 * (
+            (potentials_j[peak+1]-potentials_j[peak])/xr -
+            (potentials_j[peak]-potentials_j[peak-1])/xl
+        ) / (xl+xr);
+        if (curvature < 0.0) {
+            omega = std::sqrt(-curvature / reduced_mass_kg);
+        }
     }
-    const double below_barrier = step * sum / 3.0;
-    return 1.0 + below_barrier;
+    const auto integrand = [&](const double u) {
+        const double energy = threshold + u / beta;
+        double action;
+        if (energy < barrier) {
+            action = wkb_exponent_impl(coordinates_m, potentials_j, energy, reduced_mass_kg);
+        } else {
+            action = omega > 0.0 ? -2.0 * 3.14159265358979323846 *
+                (energy - barrier)/(kHbar * omega) :
+                -std::numeric_limits<double>::infinity();
+        }
+        const double probability = action >= 0.0 ?
+            std::exp(-action)/(1.0 + std::exp(-action)) :
+            1.0/(1.0 + std::exp(action));
+        return std::exp(-u) * probability;
+    };
+    double sum = integrand(0.0) + integrand(upper_u);
+    for (int index = 1; index < energy_grid_points; ++index) {
+        sum += (index % 2 ? 4.0 : 2.0) * integrand(step * index);
+    }
+    return std::exp(std::min(709.0, beta * height)) * step * sum / 3.0;
 }
 
 bool solve_linear_system(std::vector<std::vector<double>>& matrix,
@@ -214,103 +234,31 @@ struct RefinedMaximum {
 RefinedMaximum refine_maximum_impl(const std::vector<double>& x,
                                    const std::vector<double>& y) {
     const auto maximum_iterator = std::max_element(y.begin(), y.end());
-    const std::size_t maximum_index =
-        static_cast<std::size_t>(std::distance(y.begin(), maximum_iterator));
-    if (x.size() < 3 || maximum_index == 0 || maximum_index + 1 == x.size()) {
-        return {x[maximum_index], y[maximum_index], maximum_index, 1};
+    const std::size_t index = static_cast<std::size_t>(
+        std::distance(y.begin(), maximum_iterator));
+    const RefinedMaximum sampled{x[index], y[index], index, 1};
+    if (index == 0 || index + 1 == x.size()) {
+        return sampled;
     }
-
-    const std::size_t count = std::min<std::size_t>(5, x.size());
-    std::size_t start = maximum_index > count / 2 ? maximum_index - count / 2 : 0;
-    if (start + count > x.size()) {
-        start = x.size() - count;
+    const double hl = x[index] - x[index - 1];
+    const double hr = x[index + 1] - x[index];
+    const double sl = (y[index] - y[index - 1]) / hl;
+    const double sr = (y[index + 1] - y[index]) / hr;
+    const double curvature = 2.0 * (sr - sl) / (hl + hr);
+    if (!(curvature < 0.0) || !std::isfinite(curvature)) {
+        return sampled;
     }
-
-    const double center = x[maximum_index];
-    const double scale = std::max(
-        std::abs(x[start] - center), std::abs(x[start + count - 1] - center));
-    if (scale <= 0.0) {
-        return {x[maximum_index], y[maximum_index], maximum_index, 1};
+    const double slope = (hr * sl + hl * sr) / (hl + hr);
+    const double displacement = -slope / curvature;
+    const double candidate = x[index] + displacement;
+    const double value = y[index] + slope * displacement +
+                         0.5 * curvature * displacement * displacement;
+    if (!std::isfinite(candidate) || !std::isfinite(value) ||
+        candidate < x[index - 1] || candidate > x[index + 1] ||
+        value < y[index]) {
+        return sampled;
     }
-
-    std::vector<std::vector<double>> matrix(count, std::vector<double>(count, 0.0));
-    std::vector<double> rhs(count, 0.0);
-    for (std::size_t row = 0; row < count; ++row) {
-        const double t = (x[start + row] - center) / scale;
-        double power = 1.0;
-        for (std::size_t column = 0; column < count; ++column) {
-            matrix[row][column] = power;
-            power *= t;
-        }
-        rhs[row] = y[start + row];
-    }
-    std::vector<double> coefficients;
-    if (!solve_linear_system(matrix, rhs, coefficients)) {
-        return {x[maximum_index], y[maximum_index], maximum_index, 1};
-    }
-
-    const double lower = (x[start] - center) / scale;
-    const double upper = (x[start + count - 1] - center) / scale;
-    double best_t = (x[maximum_index] - center) / scale;
-    double best_y = polynomial_value(coefficients, best_t);
-
-    auto consider = [&](const double candidate) {
-        if (candidate < lower || candidate > upper) {
-            return;
-        }
-        const double value = polynomial_value(coefficients, candidate);
-        if (std::isfinite(value) && value > best_y) {
-            best_y = value;
-            best_t = candidate;
-        }
-    };
-
-    consider(lower);
-    consider(upper);
-    constexpr int intervals = 512;
-    double previous_x = lower;
-    double previous_value = polynomial_derivative(coefficients, previous_x);
-    for (int index = 1; index <= intervals; ++index) {
-        const double current_x = lower + (upper - lower) * static_cast<double>(index) /
-                                             static_cast<double>(intervals);
-        const double current_value = polynomial_derivative(coefficients, current_x);
-        if (current_value == 0.0) {
-            consider(current_x);
-        } else if (previous_value == 0.0 || current_value * previous_value < 0.0) {
-            double left = previous_x;
-            double right = current_x;
-            double left_value = previous_value;
-            for (int iteration = 0; iteration < 80; ++iteration) {
-                const double midpoint = 0.5 * (left + right);
-                const double midpoint_value = polynomial_derivative(coefficients, midpoint);
-                if (std::abs(midpoint_value) < 1.0e-14) {
-                    left = right = midpoint;
-                    break;
-                }
-                if (left_value * midpoint_value <= 0.0) {
-                    right = midpoint;
-                } else {
-                    left = midpoint;
-                    left_value = midpoint_value;
-                }
-            }
-            consider(0.5 * (left + right));
-        }
-        previous_x = current_x;
-        previous_value = current_value;
-    }
-
-    // Guard against an oscillatory polynomial overshooting by an unreasonable
-    // amount.  Falling back to the sampled maximum is safer than reporting a
-    // spurious variational bottleneck.
-    const double local_span = *std::max_element(y.begin() + static_cast<std::ptrdiff_t>(start),
-                                                y.begin() + static_cast<std::ptrdiff_t>(start + count)) -
-                              *std::min_element(y.begin() + static_cast<std::ptrdiff_t>(start),
-                                                y.begin() + static_cast<std::ptrdiff_t>(start + count));
-    if (!std::isfinite(best_y) || best_y > y[maximum_index] + 2.0 * std::max(1.0, local_span)) {
-        return {x[maximum_index], y[maximum_index], maximum_index, 1};
-    }
-    return {center + scale * best_t, best_y, maximum_index, count};
+    return {candidate, value, index, 3};
 }
 
 PyObject* py_harmonic_log_partition(PyObject*, PyObject* args) {
@@ -358,7 +306,7 @@ PyObject* py_refine_maximum(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "x and y must have equal, non-zero length");
         return nullptr;
     }
-    if (!strictly_increasing(x)) {
+    if (!strictly_increasing(x) ||\n        !std::all_of(x.begin(), x.end(), [](double v) { return std::isfinite(v); }) ||\n        !std::all_of(y.begin(), y.end(), [](double v) { return std::isfinite(v); })) {
         PyErr_SetString(PyExc_ValueError, "x must be strictly increasing");
         return nullptr;
     }
