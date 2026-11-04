@@ -22,7 +22,7 @@
 | ZCT / MEPSAG | Partial | 一维 WKB 内核完成；完整 MEP vibrationally adiabatic profile 待接入 |
 | SCT / CD-SCSAG | Planned | 需反应路径曲率和 small-curvature action |
 | LCT / LCG3 / LCG4 | Planned | 需 large-curvature tunneling path |
-| ICVT | Planned | 需 quantized transition-state partition treatment |
+| ICVT | Historical only | Polyrate 2023 已移除 ICVT；仅作为旧版本兼容范围，不计入 2023 必选功能 |
 | μVT / US | Partial | Beyer–Swinehart DOS 内核完成；能量分辨 variational optimization 未接入 |
 | Hindered rotor | Planned | 需 rotor potential、Pitzer–Gwinn/quantum rotor 选项 |
 | Morse / QQ / anharmonic vibration | Planned | 当前仅谐振子 |
@@ -37,6 +37,8 @@
 | `fu15` summary reader | Implemented | forward/reverse 第一张速率表 |
 | Polyrate fixed-format output 1:1 | Planned | 当前输出为结构化 JSON/CSV/表格 |
 | 112 个 Polyrate 2023 test runs | Planned | 需要用户本地 reference package；manifest/import 工具已提供 |
+
+对应的逐温度、逐列数值比较工具与严格失败语义见 [`docs/head-to-head.md`](head-to-head.md)。
 
 ## “1:1 完成”的定义
 
