@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -35,20 +36,20 @@ def _hessian_to_si(
     unit: Literal["hartree/bohr^2", "j/m^2", "kj/mol/angstrom^2"],
 ) -> FloatArray:
     if unit == "hartree/bohr^2":
-        return hessian * HARTREE_J / BOHR_M**2
+        return np.asarray(hessian * HARTREE_J / BOHR_M**2, dtype=np.float64)
     if unit == "j/m^2":
-        return hessian.copy()
+        return np.array(hessian, dtype=np.float64, copy=True)
     if unit == "kj/mol/angstrom^2":
         from .constants import AVOGADRO_MOL
 
-        return hessian * 1000.0 / AVOGADRO_MOL / ANGSTROM_M**2
+        converted: FloatArray = hessian * 1000.0 / AVOGADRO_MOL / ANGSTROM_M**2
+        return converted
     raise ValueError(f"unsupported Hessian unit {unit!r}")
 
 
 def _rigid_basis(
     masses_kg: FloatArray, coordinates_m: FloatArray
 ) -> tuple[FloatArray, int]:
-    atom_count = masses_kg.size
     center = np.sum(coordinates_m * masses_kg[:, None], axis=0) / masses_kg.sum()
     centered = coordinates_m - center
     vectors: list[FloatArray] = []

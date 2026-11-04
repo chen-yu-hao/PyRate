@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
 
 _NUMBER = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[DEde][+-]?\d+)?"
 
@@ -110,7 +109,7 @@ def relative_errors(actual: Iterable[float], expected: Iterable[float]) -> tuple
     if len(actual_values) != len(expected_values):
         raise ValueError("actual and expected sequences must have equal length")
     errors: list[float] = []
-    for actual_value, expected_value in zip(actual_values, expected_values):
+    for actual_value, expected_value in zip(actual_values, expected_values, strict=False):
         if expected_value == 0.0:
             errors.append(abs(actual_value - expected_value))
         else:

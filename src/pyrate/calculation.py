@@ -53,6 +53,20 @@ class CalculationResult:
         }
 
 
+def tunneling_correction(
+    reaction: Reaction, options: CalculationOptions, temperature_k: float
+) -> float:
+    """Return the transmission coefficient selected by ``options.tunneling``."""
+
+    if options.tunneling == "none":
+        return 1.0
+    if options.tunneling == "wigner":
+        return transition_state_wigner_kappa(reaction.transition_state, temperature_k)
+    if options.tunneling_profile is None:  # guarded by CalculationOptions validation
+        raise ValueError(f"{options.tunneling} tunneling requires a tunneling profile")
+    return profile_wkb_kappa(options.tunneling_profile, temperature_k)
+
+
 def calculate_rates(
     reaction: Reaction,
     options: CalculationOptions,
@@ -89,15 +103,7 @@ def calculate_rates(
                 k_cvt_si, reaction.molecularity, rate_unit
             )
 
-        if options.tunneling == "none":
-            kappa = 1.0
-        elif options.tunneling == "wigner":
-            kappa = transition_state_wigner_kappa(
-                reaction.transition_state, temperature
-            )
-        else:
-            assert options.tunneling_profile is not None
-            kappa = profile_wkb_kappa(options.tunneling_profile, temperature)
+        kappa = tunneling_correction(reaction, options, temperature)
 
         base_rate_si = (
             k_cvt_si if options.method == "cvt" and k_cvt_si is not None else k_tst_si

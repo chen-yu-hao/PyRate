@@ -15,10 +15,16 @@ else:
     if os.environ.get("PYRATE_NATIVE_ARCH") == "1":
         compile_args.append("-march=native")
 
+# One translation unit per numerical area; module.cpp registers their tables.
+sources = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / "cpp").glob("*.cpp"))
+headers = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / "cpp").glob("*.hpp"))
+
 extensions = [
     Extension(
         "pyrate._kernels",
-        sources=["cpp/kernels.cpp"],
+        sources=sources,
+        depends=headers,
+        include_dirs=["cpp"],
         language="c++",
         extra_compile_args=compile_args,
     )

@@ -7,7 +7,6 @@ import pytest
 from pyrate.constants import AVOGADRO_MOL
 from pyrate.head_to_head import compare_fu15_to_pyrate, parse_fu15_tables
 
-
 FU15 = """
  Summary of forward rate constants (cm**3/molecule-1 s-1) :
      T(K) TST CVT CVT/ZCT CVT/SCT
@@ -42,7 +41,8 @@ def test_units_and_explicit_method_mapping():
     report = compare_fu15_to_pyrate(parse_fu15_tables(FU15)[0], _result())
     assert report.success
     assert (report.compared, report.passed, report.failed, report.unmapped) == (4, 4, 0, 4)
-    assert max(point.relative_error for point in report.points if point.relative_error is not None) < 1e-12
+    errors = [point.relative_error for point in report.points if point.relative_error is not None]
+    assert max(errors) < 1e-12
     assert not compare_fu15_to_pyrate(parse_fu15_tables(FU15)[0], _result(), strict=True).success
 
 

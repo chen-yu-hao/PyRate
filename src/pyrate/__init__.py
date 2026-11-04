@@ -16,8 +16,8 @@ from .models import (
 )
 from .native import HAS_NATIVE, backend_info
 from .normal_modes import NormalModeResult, normal_modes
-from .states import vibrational_density_of_states
 from .rates import conventional_tst_rate_si, cvt_rate_si
+from .states import vibrational_density_of_states
 
 __all__ = [
     "Atom",

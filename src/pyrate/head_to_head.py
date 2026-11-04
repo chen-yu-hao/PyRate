@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from .constants import AVOGADRO_MOL
 from .reference import ReferenceRateTable, parse_fu15_summary
-
 
 _SUMMARY = re.compile(
     r"^\s*Summary\s+of\s+(?:forward|reverse)\s+rate\s+constants\s*\(",
@@ -39,7 +39,7 @@ def parse_fu15_tables(text: str) -> tuple[ReferenceRateTable, ...]:
         raise ValueError("no Polyrate rate summary found")
     tables = tuple(
         parse_fu15_summary(text[start:stop])
-        for start, stop in zip(starts, starts[1:] + [len(text)])
+        for start, stop in zip(starts, starts[1:] + [len(text)], strict=False)
     )
     return tables
 
@@ -127,7 +127,10 @@ def compare_fu15_to_pyrate(
             raise ValueError("first-order and second-order rate units cannot be compared")
         if not math.isfinite(temp) or temp <= 0:
             raise ValueError("invalid PyRate temperature")
-        if any(abs(temp - old_temp) <= temperature_tolerance_k for old_temp, _, _ in by_temperature):
+        if any(
+            abs(temp - old_temp) <= temperature_tolerance_k
+            for old_temp, _, _ in by_temperature
+        ):
             raise ValueError("ambiguous duplicate PyRate temperatures")
         by_temperature.append((temp, row, factor))
 

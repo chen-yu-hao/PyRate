@@ -9,9 +9,10 @@
 - 理想气体标准态下的平动、刚性转子、谐振子与电子分区函数；
 - 单分子和双分子常规过渡态理论（CTST/Eyring）；
 - 沿反应路径最大化广义活化自由能的 canonical VTST/CVT；
-- 最多五点的局部多项式瓶颈精修；
+- 有界的三点抛物线瓶颈精修（可选四/五点插值，越界即回退到采样点）；
 - Wigner 隧穿修正；
-- 一维热 WKB / zero-curvature 风格透射修正；
+- 一维一致半经典透射修正（`1/(1+e^{2θ})`、势垒以上非经典反射、阈值 `E₀ = max(V_R, V_P)`）；
+- 默认使用丰度最高同位素质量（AME2020），可选平均原子量；
 - Beyer–Swinehart 振动态密度计数 C++ 内核；
 - 笛卡尔 Hessian 质量加权、平移/转动投影和正规模分析；
 - Polyrate `*GENERAL`、`*REACT1`、`*START`、`*PATH`、`*TUNNEL`、`*RATE` 等区段的保留式解析；
@@ -82,7 +83,7 @@ for row in result.rows:
 
 ```text
 src/pyrate/          Python 数据模型、解析、热力学、编排和 CLI
-cpp/kernels.cpp      C++17 数值热点与 CPython 扩展
+cpp/                 C++17 数值热点（按领域拆分）与 CPython 扩展
 examples/            可直接运行的 TOML 样例
 tests/               单元、原生后端和端到端测试
 tools/               参考分发包导入与基准工具
@@ -104,7 +105,7 @@ python tools/compare_polyrate_rates.py /path/to/case.fu15 /tmp/pyrate.json --rto
 
 工具将匹配温度、检查速率量纲、执行单位换算并输出每项误差；未映射的高级方法不会被误报为通过。该工具的合成测试通过**不代表**已经完成 112 个官方算例的数值验收，说明见 [头对头测试规范](docs/head-to-head.md)。
 
-完整模块矩阵和“完成”的数值验收条件见 [`docs/compatibility.md`](docs/compatibility.md)。参考测试工作流见 [`docs/reference-validation.md`](docs/reference-validation.md)。
+完整模块矩阵和“完成”的数值验收条件见 [`docs/compatibility.md`](docs/compatibility.md)。审计结论、已知数值偏差与并行开发计划见 [`docs/roadmap.md`](docs/roadmap.md)。参考测试工作流见 [`docs/reference-validation.md`](docs/reference-validation.md)。
 
 ## 许可与来源
 
