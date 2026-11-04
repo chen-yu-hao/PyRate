@@ -267,7 +267,12 @@ def thermal_wkb_kappa(
         raise ValueError("coordinates must be strictly increasing")
     if not all(map(math.isfinite, coordinates + potentials)):
         raise ValueError("coordinates and potentials must be finite")
-    if not math.isfinite(temperature_k) or not math.isfinite(reduced_mass_kg) or temperature_k <= 0 or reduced_mass_kg <= 0:
+    if (
+        not math.isfinite(temperature_k)
+        or not math.isfinite(reduced_mass_kg)
+        or temperature_k <= 0.0
+        or reduced_mass_kg <= 0.0
+    ):
         raise ValueError("temperature and reduced mass must be finite and positive")
     if energy_grid_points < 20:
         raise ValueError("energy_grid_points must be at least 20")
