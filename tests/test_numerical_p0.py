@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import math
+import os
+import subprocess
+import sys
 
 import pytest
 
-from pyrate.constants import AMU_KG, ANGSTROM_M, AVOGADRO_MOL
+from pyrate.constants import AMU_KG, ANGSTROM_M, AVOGADRO_MOL, HBAR_J_S
 from pyrate.elements import isotope_mass_amu
-from pyrate.native import refine_maximum, thermal_wkb_kappa, wkb_exponent
-from pyrate.models import Atom, Reaction, Species
+from pyrate.models import Atom, Reaction, Species, TunnelingProfile
+from pyrate.native import HAS_NATIVE, refine_maximum, thermal_wkb_kappa, wkb_exponent
+from pyrate.tunneling import profile_transmission_probability
 
 
 def test_cvt_local_parabola_is_bracketed() -> None:
@@ -47,10 +52,11 @@ def test_constants_profile_fails_closed() -> None:
 
 
 def test_reflection_below_and_above_barrier() -> None:
-    from pyrate.models import TunnelingProfile
-    from pyrate.tunneling import profile_transmission_probability
-    profile = TunnelingProfile((-1.0, -0.5, 0.0, 0.5, 1.0),
-                               (0.0, 12.0, 25.0, 12.0, 0.0), 1.0)
+    profile = TunnelingProfile(
+        (-1.0, -0.5, 0.0, 0.5, 1.0),
+        (0.0, 12.0, 25.0, 12.0, 0.0),
+        1.0,
+    )
     assert 0.0 < profile_transmission_probability(profile, 20.0) < 0.5
     assert math.isclose(profile_transmission_probability(profile, 25.0), 0.5)
     assert 0.5 < profile_transmission_probability(profile, 30.0) < 1.0
@@ -58,14 +64,14 @@ def test_reflection_below_and_above_barrier() -> None:
 
 def test_asymmetric_product_threshold() -> None:
     x = tuple(n * ANGSTROM_M for n in (-2.0, -1.0, 0.0, 1.0, 2.0))
-    energy = tuple(v * 1000.0 / AVOGADRO_MOL for v in (0., 10., 30., 20., 15.))
+    energy = tuple(v * 1000.0 / AVOGADRO_MOL for v in (0.0, 10.0, 30.0, 20.0, 15.0))
     kappa = thermal_wkb_kappa(x, energy, 350.0, AMU_KG, 600)
     assert math.isfinite(kappa) and kappa > 0.0
 
 
 def test_wkb_action_decreases_with_energy() -> None:
-    x = tuple(n * ANGSTROM_M for n in (-1., 0., 1.))
-    v = tuple(n * 1000. / AVOGADRO_MOL for n in (0., 20., 0.))
+    x = tuple(n * ANGSTROM_M for n in (-1.0, 0.0, 1.0))
+    v = tuple(n * 1000.0 / AVOGADRO_MOL for n in (0.0, 20.0, 0.0))
     low = wkb_exponent(x, v, 0.0, AMU_KG)
     high = wkb_exponent(x, v, 10_000.0 / AVOGADRO_MOL, AMU_KG)
     assert low > high > 0.0
@@ -77,9 +83,6 @@ def test_symmetric_eckart_analytic_probability() -> None:
     The approximation is not exact: a 12% envelope is applied and documented.
     The benchmark catches exponent normalization and unit-factor regressions.
     """
-    from pyrate.models import TunnelingProfile
-    from pyrate.tunneling import profile_transmission_probability
-    from pyrate.constants import HBAR_J_S
 
     mass = AMU_KG
     inverse_width = 1.0e10  # 1 / angstrom
@@ -99,7 +102,6 @@ def test_symmetric_eckart_analytic_probability() -> None:
 
 def test_triangular_barrier_action_fixed_regression() -> None:
     """Closed-form action for a triangular barrier, including unit conversion."""
-    from pyrate.constants import HBAR_J_S
 
     x = (-ANGSTROM_M, 0.0, ANGSTROM_M)
     v0 = 25_000.0 / AVOGADRO_MOL
@@ -111,12 +113,6 @@ def test_triangular_barrier_action_fixed_regression() -> None:
 
 def test_backend_consistency_subprocess() -> None:
     """Compare native and disabled-native numerical results in separate imports."""
-    import json
-    import os
-    import subprocess
-    import sys
-
-    from pyrate.native import HAS_NATIVE
 
     if not HAS_NATIVE:
         pytest.skip("native extension is not present in this installation")
@@ -140,8 +136,11 @@ print(json.dumps([maximum.coordinate, maximum.value,
         else:
             env.pop("PYRATE_DISABLE_NATIVE", None)
         result = subprocess.run(
-            [sys.executable, "-c", code], check=True, capture_output=True,
-            text=True, env=env,
+            [sys.executable, "-c", code],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
         )
         return list(json.loads(result.stdout))
 
