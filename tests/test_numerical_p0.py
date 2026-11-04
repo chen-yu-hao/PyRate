@@ -95,3 +95,56 @@ def test_symmetric_eckart_analytic_probability() -> None:
     profile = TunnelingProfile(coordinates, potential, 1.0)
     actual = profile_transmission_probability(profile, 10.0)
     assert math.isclose(actual, exact, rel_tol=0.12)
+
+
+def test_triangular_barrier_action_fixed_regression() -> None:
+    """Closed-form action for a triangular barrier, including unit conversion."""
+    from pyrate.constants import HBAR_J_S
+
+    x = (-ANGSTROM_M, 0.0, ANGSTROM_M)
+    v0 = 25_000.0 / AVOGADRO_MOL
+    action = wkb_exponent(x, (0.0, v0, 0.0), 0.0, AMU_KG)
+    exact = (8.0 / 3.0) * ANGSTROM_M * math.sqrt(2.0 * AMU_KG * v0) / HBAR_J_S
+    assert math.isclose(action, exact, rel_tol=1.0e-12)
+    assert math.isclose(action, 29.691126198605367, rel_tol=2.0e-10)
+
+
+def test_backend_consistency_subprocess() -> None:
+    """Compare native and disabled-native numerical results in separate imports."""
+    import json
+    import os
+    import subprocess
+    import sys
+
+    from pyrate.native import HAS_NATIVE
+
+    if not HAS_NATIVE:
+        pytest.skip("native extension is not present in this installation")
+    code = """
+import json
+from pyrate.native import refine_maximum, thermal_wkb_kappa, wkb_exponent
+from pyrate.constants import AMU_KG, ANGSTROM_M, AVOGADRO_MOL
+x = [-1., -.5, 0., .5, 1.]
+y = [0., 12., 25., 12., 0.]
+p = [v*1000/AVOGADRO_MOL for v in y]
+coord = [v*ANGSTROM_M for v in x]
+maximum = refine_maximum(x, [-2., 1., 3., 2., 0.])
+print(json.dumps([maximum.coordinate, maximum.value,
+    wkb_exponent(coord, p, 10_000/AVOGADRO_MOL, AMU_KG),
+    thermal_wkb_kappa(coord, p, 350., AMU_KG, 400)]))
+"""
+    def execute(disabled: bool) -> list[float]:
+        env = dict(os.environ)
+        if disabled:
+            env["PYRATE_DISABLE_NATIVE"] = "1"
+        else:
+            env.pop("PYRATE_DISABLE_NATIVE", None)
+        result = subprocess.run(
+            [sys.executable, "-c", code], check=True, capture_output=True,
+            text=True, env=env,
+        )
+        return list(json.loads(result.stdout))
+
+    native = execute(False)
+    fallback = execute(True)
+    assert native == pytest.approx(fallback, rel=2.0e-9, abs=1.0e-11)
