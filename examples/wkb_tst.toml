@@ -1,0 +1,41 @@
+[calculation]
+name = "Illustrative bimolecular TST with one-dimensional WKB"
+temperatures_k = [200.0, 300.0, 500.0]
+method = "tst"
+tunneling = "wkb"
+rate_unit = "cm^3 molecule^-1 s^-1"
+
+[[reactants]]
+name = "A"
+mass_amu = 1.0
+rotor_type = "atomic"
+electronic_energy_kj_mol = 0.0
+electronic_degeneracy = 2
+
+[[reactants]]
+name = "BC"
+mass_amu = 20.0
+rotor_type = "linear"
+moments_of_inertia_amu_a2 = [8.0]
+symmetry_number = 1
+electronic_energy_kj_mol = 0.0
+frequencies_cm1 = [1800.0]
+
+[transition_state]
+name = "A--B--C"
+mass_amu = 21.0
+rotor_type = "linear"
+moments_of_inertia_amu_a2 = [25.0]
+symmetry_number = 1
+electronic_energy_kj_mol = 34.0
+frequencies_cm1 = [700.0, 1550.0]
+imaginary_frequency_cm1 = 900.0
+
+[tunneling]
+method = "wkb"
+
+[tunneling.profile]
+coordinates_angstrom = [-1.2, -0.9, -0.6, -0.3, 0.0, 0.3, 0.6, 0.9, 1.2]
+energies_kj_mol = [0.0, 5.0, 16.0, 29.0, 34.0, 28.0, 14.0, 4.0, 0.0]
+reduced_mass_amu = 0.95
+energy_grid_points = 600
