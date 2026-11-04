@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .calculation import CalculationResult, RateRow, calculate_rates
-from .input import LoadedCalculation, load_input, load_toml, parse_toml_data
+from .elements import ISOTOPE_MASSES_AMU, isotope_mass_amu\nfrom .input import LoadedCalculation, load_input, load_toml, parse_toml_data
 from .models import (
     Atom,
     CalculationOptions,
@@ -24,7 +24,7 @@ __all__ = [
     "CalculationOptions",
     "CalculationResult",
     "ElectronicState",
-    "HAS_NATIVE",
+    "HAS_NATIVE",\n    "ISOTOPE_MASSES_AMU",
     "LoadedCalculation",
     "NormalModeResult",
     "PathPoint",
@@ -37,7 +37,7 @@ __all__ = [
     "calculate_rates",
     "conventional_tst_rate_si",
     "cvt_rate_si",
-    "load_input",
+    "isotope_mass_amu",\n    "load_input",
     "load_toml",
     "normal_modes",
     "parse_toml_data",
