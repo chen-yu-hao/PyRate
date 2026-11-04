@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from .elements import ISOTOPE_MASSES_AMU, isotope_mass_amu
 from .calculation import CalculationResult, RateRow, calculate_rates
+from .elements import ISOTOPE_MASSES_AMU, isotope_mass_amu
 from .fixed_units import (
     FixedUnitDocument,
     FixedUnitEntry,
