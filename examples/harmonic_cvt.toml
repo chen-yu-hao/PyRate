@@ -1,0 +1,74 @@
+[calculation]
+name = "Illustrative unimolecular harmonic CVT"
+temperatures_k = [200.0, 300.0, 500.0, 1000.0]
+method = "cvt"
+tunneling = "wigner"
+standard_pressure_bar = 1.0
+rate_unit = "s^-1"
+
+[[reactants]]
+name = "reactant"
+mass_amu = 30.0
+rotor_type = "nonlinear"
+moments_of_inertia_amu_a2 = [11.0, 18.0, 24.0]
+symmetry_number = 1
+electronic_energy_kj_mol = 0.0
+frequencies_cm1 = [420.0, 730.0, 1010.0, 1450.0, 3020.0, 3110.0]
+
+[transition_state]
+name = "saddle point"
+mass_amu = 30.0
+rotor_type = "nonlinear"
+moments_of_inertia_amu_a2 = [12.0, 19.0, 25.0]
+symmetry_number = 1
+electronic_energy_kj_mol = 54.0
+frequencies_cm1 = [380.0, 680.0, 940.0, 1320.0, 2980.0]
+imaginary_frequency_cm1 = 1120.0
+
+[path]
+coordinate_unit = "angstrom"
+
+[[path.points]]
+coordinate = -0.80
+name = "path -0.80"
+mass_amu = 30.0
+rotor_type = "nonlinear"
+moments_of_inertia_amu_a2 = [11.5, 18.5, 24.5]
+electronic_energy_kj_mol = 48.0
+frequencies_cm1 = [400.0, 700.0, 970.0, 1380.0, 3000.0]
+
+[[path.points]]
+coordinate = -0.40
+name = "path -0.40"
+mass_amu = 30.0
+rotor_type = "nonlinear"
+moments_of_inertia_amu_a2 = [11.7, 18.7, 24.7]
+electronic_energy_kj_mol = 52.5
+frequencies_cm1 = [390.0, 690.0, 955.0, 1350.0, 2990.0]
+
+[[path.points]]
+coordinate = 0.00
+name = "path 0.00"
+mass_amu = 30.0
+rotor_type = "nonlinear"
+moments_of_inertia_amu_a2 = [12.0, 19.0, 25.0]
+electronic_energy_kj_mol = 54.0
+frequencies_cm1 = [380.0, 680.0, 940.0, 1320.0, 2980.0]
+
+[[path.points]]
+coordinate = 0.40
+name = "path 0.40"
+mass_amu = 30.0
+rotor_type = "nonlinear"
+moments_of_inertia_amu_a2 = [12.2, 19.2, 25.2]
+electronic_energy_kj_mol = 55.0
+frequencies_cm1 = [370.0, 670.0, 925.0, 1290.0, 2970.0]
+
+[[path.points]]
+coordinate = 0.80
+name = "path 0.80"
+mass_amu = 30.0
+rotor_type = "nonlinear"
+moments_of_inertia_amu_a2 = [12.5, 19.5, 25.5]
+electronic_energy_kj_mol = 51.0
+frequencies_cm1 = [360.0, 660.0, 910.0, 1260.0, 2960.0]

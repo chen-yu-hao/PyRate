@@ -1,0 +1,13 @@
+PyRate
+Copyright 2026 PyRate contributors
+
+This product is an independent reimplementation intended to interoperate with
+workflows and data formats used by Polyrate. Polyrate is developed by the
+Truhlar group and collaborators. The Polyrate 2023 reference distribution is
+available under the Apache License 2.0; its manual and associated publication
+have their own stated attribution terms.
+
+No Polyrate source archive or manual is bundled in this repository. Small test
+snippets may reproduce factual input/output values solely for compatibility
+verification and retain their source attribution in the corresponding test or
+documentation.
