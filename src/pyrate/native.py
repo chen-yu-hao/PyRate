@@ -135,7 +135,9 @@ def _linear_sqrt_integral(u0: float, u1: float) -> float:
     if abs(delta) <= np.finfo(float).eps * scale:
         return math.sqrt(max(0.0, u0))
     if u0 > 0.0 and u1 > 0.0:
-        return (2.0 / 3.0) * (u1**1.5 - u0**1.5) / delta
+        # Rationalized form avoids cancellation for nearly equal endpoints.
+        root0, root1 = math.sqrt(u0), math.sqrt(u1)
+        return (2.0 / 3.0) * (u0 + root0 * root1 + u1) / (root0 + root1)
     if u0 > 0.0:
         return (2.0 / 3.0) * u0**1.5 / (u0 - u1)
     return (2.0 / 3.0) * u1**1.5 / (u1 - u0)
