@@ -91,7 +91,18 @@ docs/                架构、输入格式、兼容矩阵和验证方法
 
 ## 兼容性路线
 
-当前核心覆盖 harmonic CTST/CVT、Wigner 与一维 WKB。以下 Polyrate 能力仍需逐项移植并以官方测试输出验收：SCT/LCT、ICVT、μVT/US、VRC-VTST、反应路径积分器、hindered rotor/非谐振动、双层校正、IVTST/ISPE/IOC、SS-QRRK 与压力依赖动力学。
+当前核心覆盖 harmonic CTST/CVT、Wigner 与一维 WKB。以下 Polyrate 2023 能力仍需逐项移植并以官方测试输出验收：SCT/LCT、μVT/US、VRC-VTST、反应路径积分器、hindered rotor/非谐振动、双层校正、IVTST/ISPE/IOC、SS-QRRK 与压力依赖动力学。ICVT 已在 Polyrate 2023 中移除，仅作为旧版兼容性话题。
+
+### Polyrate 官方输出逐列对照
+
+在使用相同物理模型和温度网格生成 PyRate JSON 后，比较 Polyrate `fu15` 中实际可验证的速率列：
+
+```bash
+pyrate run examples/harmonic_cvt.toml --format json -o /tmp/pyrate.json
+python tools/compare_polyrate_rates.py /path/to/case.fu15 /tmp/pyrate.json --rtol 0.005
+```
+
+工具将匹配温度、检查速率量纲、执行单位换算并输出每项误差；未映射的高级方法不会被误报为通过。该工具的合成测试通过**不代表**已经完成 112 个官方算例的数值验收，说明见 [头对头测试规范](docs/head-to-head.md)。
 
 完整模块矩阵和“完成”的数值验收条件见 [`docs/compatibility.md`](docs/compatibility.md)。参考测试工作流见 [`docs/reference-validation.md`](docs/reference-validation.md)。
 
