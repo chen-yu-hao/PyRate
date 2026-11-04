@@ -30,7 +30,7 @@ python -m pyrate native-info
 pytest -q
 ```
 
-安装时会构建 `pyrate._kernels`。调试纯 Python 回退时：
+安装时会构建 `pyrate._kernels` 和 `pyrate._wkb_kernels`。调试纯 Python 回退时：
 
 ```bash
 PYRATE_DISABLE_NATIVE=1 pytest -q
@@ -53,7 +53,7 @@ pyrate inspect path/to/h3tr1.dat --json
 pyrate validate path/to/h3tr1.dat
 ```
 
-解析器会保留未知关键字，而不是静默删除。依赖外部势能面 hook、`fu30/fu31/fu40` 或尚未实现算法的旧输入目前只能检查，不能直接求解。
+解析器会保留未知关键字，而不是静默删除。首批 4 个使用 `fu30`/`fu40` 直接频率数据的官方 legacy TST 算例已在参考审计工作流中成功执行并匹配打印速率表；其余大多数旧输入仍会因尚未实现的语义或算法明确报错，不能直接求解。详见 [`docs/polyrate-2023-head-to-head.md`](docs/polyrate-2023-head-to-head.md)。
 
 ## Python API
 
@@ -84,7 +84,8 @@ for row in result.rows:
 
 ```text
 src/pyrate/          Python 数据模型、解析、热力学、编排和 CLI
-cpp/kernels.cpp      C++17 数值热点与 CPython 扩展
+cpp/kernels.cpp      CVT、分区函数等 C++17 数值热点
+cpp/wkb_kernels.cpp  单独编译的 WKB 数值内核
 examples/            可直接运行的 TOML 样例
 tests/               单元、原生后端和端到端测试
 tools/               参考分发包导入与基准工具
@@ -104,7 +105,7 @@ pyrate run examples/harmonic_cvt.toml --format json -o /tmp/pyrate.json
 python tools/compare_polyrate_rates.py /path/to/case.fu15 /tmp/pyrate.json --rtol 0.005
 ```
 
-工具将匹配温度、检查速率量纲、执行单位换算并输出每项误差；未映射的高级方法不会被误报为通过。该工具的合成测试通过**不代表**已经完成 112 个官方算例的数值验收，说明见 [头对头测试规范](docs/head-to-head.md)。
+工具将匹配温度、检查速率量纲、执行单位换算并输出每项误差；未映射的高级方法不会被误报为通过。已有 4/112 官方 legacy 输入匹配打印的 TST 速率表，但中间量逐层验证仍为 0/112；该工具的合成测试通过**不代表**已经完成 112 个官方算例的数值验收，说明见 [头对头测试规范](docs/head-to-head.md)。
 
 完整模块矩阵和“完成”的数值验收条件见 [`docs/compatibility.md`](docs/compatibility.md)。参考测试工作流见 [`docs/reference-validation.md`](docs/reference-validation.md)。
 
