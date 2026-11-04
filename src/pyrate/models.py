@@ -30,8 +30,12 @@ class Atom:
     def __post_init__(self) -> None:
         symbol = canonical_symbol(self.symbol)
         object.__setattr__(self, "symbol", symbol)
-        mass = (isotope_mass_amu(symbol, self.isotope) if self.isotope is not None
-                else atomic_mass_amu(symbol)) if self.mass_amu is None else float(self.mass_amu)
+        if self.mass_amu is not None:
+            mass = float(self.mass_amu)
+        elif self.isotope is not None:
+            mass = isotope_mass_amu(symbol, self.isotope)
+        else:
+            mass = atomic_mass_amu(symbol)
         if mass <= 0.0:
             raise ValueError("atom mass must be positive")
         object.__setattr__(self, "mass_amu", mass)
@@ -277,7 +281,9 @@ class Reaction:
             raise ValueError("reaction requires at least one reactant")
         if len(reactants) > 2:
             raise NotImplementedError("the current public API supports uni- and bimolecular rates")
-        object.__setattr__(self, "constants_profile", validate_constants_profile(self.constants_profile))
+        object.__setattr__(
+            self, "constants_profile", validate_constants_profile(self.constants_profile)
+        )
         if self.standard_pressure_pa <= 0.0:
             raise ValueError("standard pressure must be positive")
         if len(self.transition_state.imaginary_frequencies_cm1) > 1:
