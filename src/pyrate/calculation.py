@@ -49,7 +49,8 @@ class CalculationResult:
             "method": self.method,
             "tunneling": self.tunneling,
             "molecularity": self.molecularity,
-            "standard_pressure_pa": self.standard_pressure_pa,\n            "constants_profile": self.constants_profile,
+            "standard_pressure_pa": self.standard_pressure_pa,
+            "constants_profile": self.constants_profile,
             "rows": [row.as_dict() for row in self.rows],
         }
 
