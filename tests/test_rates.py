@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
+
+import pytest
 
 from pyrate.constants import (
     BOLTZMANN_J_K,
@@ -44,23 +47,66 @@ def test_zero_barrier_bimolecular_has_standard_concentration_factor() -> None:
     assert math.isclose(rate, expected, rel_tol=1.0e-14)
 
 
-def test_cvt_finds_refined_free_energy_maximum() -> None:
-    reactant = model_species("reactant", 0.0)
-    transition_state = model_species("ts", 50.0)
-    coordinates = (-1.0, -0.5, 0.0, 0.5, 1.0)
+def quadratic_path_reaction(
+    coordinates: tuple[float, ...], energy: Callable[[float], float]
+) -> Reaction:
     points = tuple(
-        PathPoint(
-            coordinate=s,
-            dividing_surface=model_species("path", 60.0 - 8.0 * (s - 0.25) ** 2),
-        )
+        PathPoint(coordinate=s, dividing_surface=model_species("path", energy(s)))
         for s in coordinates
     )
-    reaction = Reaction(
-        reactants=(reactant,),
-        transition_state=transition_state,
+    return Reaction(
+        reactants=(model_species("reactant", 0.0),),
+        transition_state=model_species("ts", 50.0),
         path=ReactionPath(points),
     )
+
+
+def test_cvt_finds_refined_free_energy_maximum() -> None:
+    # Path points differ only in electronic energy, so ΔG(s) is exactly
+    # quadratic and the three-point parabola recovers the true bottleneck.
+    reaction = quadratic_path_reaction(
+        (-1.0, -0.5, 0.0, 0.5, 1.0), lambda s: 60.0 - 8.0 * (s - 0.25) ** 2
+    )
     result = cvt_rate_si(reaction, 400.0)
-    assert math.isclose(result.coordinate, 0.25, abs_tol=2.0e-3)
-    assert result.fit_points == 5
+    assert math.isclose(result.coordinate, 0.25, abs_tol=1.0e-12)
+    assert result.fit_points == 3
+    assert result.sampled_coordinate == 0.0
     assert result.activation_gibbs_kj_mol > result.sampled_activation_gibbs_kj_mol
+    assert math.isclose(
+        result.activation_gibbs_kj_mol - result.sampled_activation_gibbs_kj_mol,
+        8.0 * 0.25**2,
+        rel_tol=1.0e-10,
+    )
+
+
+def test_cvt_opt_in_five_point_fit() -> None:
+    reaction = quadratic_path_reaction(
+        (-1.0, -0.5, 0.0, 0.5, 1.0), lambda s: 60.0 - 8.0 * (s - 0.25) ** 2
+    )
+    default = cvt_rate_si(reaction, 400.0)
+    quartic = cvt_rate_si(reaction, 400.0, max_fit_points=5)
+    assert quartic.fit_points == 5
+    assert math.isclose(quartic.coordinate, 0.25, abs_tol=1.0e-12)
+    assert math.isclose(quartic.rate_si, default.rate_si, rel_tol=1.0e-12)
+
+
+def test_cvt_falls_back_to_sampled_bottleneck_when_fit_exceeds_bound() -> None:
+    # A steep rise into a wide plateau: the parabola would overshoot the drop to
+    # the lower neighbour, so the sampled dividing surface is kept.
+    reaction = quadratic_path_reaction(
+        (-0.01, 0.0, 1.0), {-0.01: 59.0, 0.0: 60.0, 1.0: 60.0}.__getitem__
+    )
+    result = cvt_rate_si(reaction, 300.0)
+    assert result.fit_points == 1
+    assert result.coordinate == result.sampled_coordinate == 0.0
+    assert result.activation_gibbs_kj_mol == result.sampled_activation_gibbs_kj_mol
+    expected = tst_rate_from_activation_gibbs_si(
+        result.sampled_activation_gibbs_kj_mol, 300.0, 1, DEFAULT_STANDARD_PRESSURE_PA
+    )
+    assert math.isclose(result.rate_si, expected, rel_tol=1.0e-15)
+
+
+def test_cvt_rejects_invalid_fit_points() -> None:
+    reaction = quadratic_path_reaction((-1.0, 0.0, 1.0), lambda s: 60.0 - s * s)
+    with pytest.raises(ValueError, match="max_points"):
+        cvt_rate_si(reaction, 300.0, max_fit_points=7)

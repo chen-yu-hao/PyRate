@@ -1,4 +1,17 @@
 // Variational-maximum refinement kernels used by CVT.
+//
+// refine_maximum(x, y, max_points=3) refines the first sampled maximum i of a
+// curve y(x) (for CVT, the generalized free energy of activation along the
+// path).  Every refined result satisfies, with B = y[i] - min(y[i-1], y[i+1]),
+//
+//   x[i-1] <= coordinate <= x[i+1]   and   y[i] <= value <= y[i] + B;
+//
+// a fit that would violate either bound is not reported.  The default is the
+// parabola through (i-1, i, i+1).  max_points = 4 or 5 opts in to the
+// interpolating polynomial through that many points; when it has no admissible
+// maximum the parabola is tried next, and the sample itself is the last resort
+// (fit_points = 1).  The arithmetic mirrors src/pyrate/native/fit.py operation
+// by operation so that both backends agree to rounding.
 #include "common.hpp"
 
 #include <algorithm>
@@ -9,62 +22,9 @@ namespace {
 
 using namespace pyrate;
 
-bool solve_linear_system(std::vector<std::vector<double>>& matrix,
-                         std::vector<double>& rhs,
-                         std::vector<double>& solution) {
-    const std::size_t n = matrix.size();
-    for (std::size_t pivot = 0; pivot < n; ++pivot) {
-        std::size_t best = pivot;
-        for (std::size_t row = pivot + 1; row < n; ++row) {
-            if (std::abs(matrix[row][pivot]) > std::abs(matrix[best][pivot])) {
-                best = row;
-            }
-        }
-        if (std::abs(matrix[best][pivot]) < 1.0e-14) {
-            return false;
-        }
-        if (best != pivot) {
-            std::swap(matrix[best], matrix[pivot]);
-            std::swap(rhs[best], rhs[pivot]);
-        }
-        const double diagonal = matrix[pivot][pivot];
-        for (std::size_t column = pivot; column < n; ++column) {
-            matrix[pivot][column] /= diagonal;
-        }
-        rhs[pivot] /= diagonal;
-        for (std::size_t row = 0; row < n; ++row) {
-            if (row == pivot) {
-                continue;
-            }
-            const double factor = matrix[row][pivot];
-            for (std::size_t column = pivot; column < n; ++column) {
-                matrix[row][column] -= factor * matrix[pivot][column];
-            }
-            rhs[row] -= factor * rhs[pivot];
-        }
-    }
-    solution = rhs;
-    return true;
-}
-
-double polynomial_value(const std::vector<double>& coefficients, const double x) {
-    double result = 0.0;
-    for (auto iterator = coefficients.rbegin(); iterator != coefficients.rend(); ++iterator) {
-        result = result * x + *iterator;
-    }
-    return result;
-}
-
-double polynomial_derivative(const std::vector<double>& coefficients, const double x) {
-    if (coefficients.size() <= 1) {
-        return 0.0;
-    }
-    double result = 0.0;
-    for (std::size_t degree = coefficients.size() - 1; degree > 0; --degree) {
-        result = result * x + static_cast<double>(degree) * coefficients[degree];
-    }
-    return result;
-}
+constexpr Py_ssize_t kMinFitPoints = 3;
+constexpr Py_ssize_t kMaxFitPoints = 5;
+constexpr int kBisectionSteps = 100;
 
 struct RefinedMaximum {
     double x;
@@ -73,112 +33,223 @@ struct RefinedMaximum {
     std::size_t fit_points;
 };
 
-RefinedMaximum refine_maximum_impl(const std::vector<double>& x,
-                                   const std::vector<double>& y) {
-    const auto maximum_iterator = std::max_element(y.begin(), y.end());
-    const std::size_t maximum_index =
-        static_cast<std::size_t>(std::distance(y.begin(), maximum_iterator));
-    if (x.size() < 3 || maximum_index == 0 || maximum_index + 1 == x.size()) {
-        return {x[maximum_index], y[maximum_index], maximum_index, 1};
-    }
+struct Candidate {
+    bool accepted;
+    double x;
+    double y;
+};
 
-    const std::size_t count = std::min<std::size_t>(5, x.size());
-    std::size_t start = maximum_index > count / 2 ? maximum_index - count / 2 : 0;
+double horner(const std::vector<double>& coefficients, const double t) {
+    double result = 0.0;
+    for (auto iterator = coefficients.rbegin(); iterator != coefficients.rend(); ++iterator) {
+        result = result * t + *iterator;
+    }
+    return result;
+}
+
+std::vector<double> derivative(const std::vector<double>& coefficients) {
+    std::vector<double> result;
+    for (std::size_t degree = 1; degree < coefficients.size(); ++degree) {
+        result.push_back(static_cast<double>(degree) * coefficients[degree]);
+    }
+    return result;
+}
+
+// Accept a refined point only inside the bracket and below the drop bound.
+Candidate admit(const double coordinate, const double value, const std::vector<double>& x,
+                const std::vector<double>& y, const std::size_t i) {
+    const double ceiling = y[i] + (y[i] - std::min(y[i - 1], y[i + 1]));
+    if (!std::isfinite(coordinate) || !std::isfinite(value) || !(value >= y[i]) ||
+        !(value <= ceiling)) {
+        return {false, 0.0, 0.0};
+    }
+    // The fits below keep the coordinate inside the bracket analytically; the
+    // clamp only absorbs rounding in x[i] + offset.
+    return {true, std::min(std::max(coordinate, x[i - 1]), x[i + 1]), value};
+}
+
+// Vertex of the parabola through (i-1, i, i+1), written as
+// p(x[i] + t) = y[i] + b t + a t^2.  With spacings h_l, h_r and drops
+// d_l = y[i] - y[i-1] > 0 (i is the first maximum) and d_r = y[i] - y[i+1] >= 0,
+//   a = -(d_l h_r + d_r h_l) / H,   b = (d_l h_r^2 - d_r h_l^2) / H,
+//   H = h_l h_r (h_l + h_r),
+// so a < 0, the vertex t* = -b / (2a) lies in [-h_l / 2, h_r / 2] and
+// p(t*) = y[i] + b t* / 2 >= y[i].
+Candidate quadratic_vertex(const std::vector<double>& x, const std::vector<double>& y,
+                           const std::size_t i) {
+    const double h_left = x[i] - x[i - 1];
+    const double h_right = x[i + 1] - x[i];
+    const double drop_left = y[i] - y[i - 1];
+    const double drop_right = y[i] - y[i + 1];
+    const double numerator = drop_left * h_right * h_right - drop_right * h_left * h_left;
+    const double weight = drop_left * h_right + drop_right * h_left;
+    const double spacing = h_left * h_right * (h_left + h_right);
+    if (!(weight > 0.0) || !(spacing > 0.0)) {
+        return {false, 0.0, 0.0};
+    }
+    const double offset = numerator / (2.0 * weight);
+    const double slope = numerator / spacing;
+    return admit(x[i] + offset, y[i] + 0.5 * slope * offset, x, y, i);
+}
+
+// Monomial coefficients (lowest degree first) of the polynomial interpolating
+// (t[k], values[k]); built from Newton divided differences.
+bool interpolating_polynomial(const std::vector<double>& t, const std::vector<double>& values,
+                              std::vector<double>& coefficients) {
+    const std::size_t count = t.size();
+    std::vector<double> divided = values;
+    for (std::size_t level = 1; level < count; ++level) {
+        for (std::size_t k = count - 1; k >= level; --k) {
+            const double denominator = t[k] - t[k - level];
+            if (!(denominator > 0.0)) {
+                return false;
+            }
+            divided[k] = (divided[k] - divided[k - 1]) / denominator;
+        }
+    }
+    coefficients.assign(1, divided[count - 1]);
+    for (std::size_t k = count - 1; k-- > 0;) {
+        // coefficients <- coefficients * (t - t[k]) + divided[k]
+        std::vector<double> expanded(coefficients.size() + 1, 0.0);
+        for (std::size_t degree = 0; degree < expanded.size(); ++degree) {
+            const double shifted = degree >= 1 ? coefficients[degree - 1] : 0.0;
+            const double scaled = degree < coefficients.size() ? t[k] * coefficients[degree] : 0.0;
+            expanded[degree] = shifted - scaled;
+        }
+        expanded[0] = expanded[0] + divided[k];
+        coefficients = std::move(expanded);
+    }
+    return true;
+}
+
+// Real roots of a polynomial of degree <= 2 strictly inside (lower, upper).
+void append_interior_roots(const std::vector<double>& coefficients, const double lower,
+                           const double upper, std::vector<double>& roots) {
+    std::vector<double> found;
+    const double constant = coefficients.size() > 0 ? coefficients[0] : 0.0;
+    const double linear = coefficients.size() > 1 ? coefficients[1] : 0.0;
+    const double quadratic = coefficients.size() > 2 ? coefficients[2] : 0.0;
+    if (quadratic != 0.0) {
+        const double discriminant = linear * linear - 4.0 * quadratic * constant;
+        if (discriminant >= 0.0) {
+            const double q = -0.5 * (linear + std::copysign(std::sqrt(discriminant), linear));
+            found.push_back(q / quadratic);
+            if (q != 0.0) {
+                found.push_back(constant / q);
+            }
+        }
+    } else if (linear != 0.0) {
+        found.push_back(-constant / linear);
+    }
+    for (const double root : found) {
+        if (root > lower && root < upper) {
+            roots.push_back(root);
+        }
+    }
+}
+
+// Highest local maximum of the interpolating polynomial through
+// x[start .. start+count) that lies inside [x[i-1], x[i+1]].  The search uses
+// the scaled variable t = (x - x[i]) / scale; the roots of p'' split the
+// bracket into pieces on which p' is monotonic, and every + to - sign change of
+// p' is located by bisection.
+Candidate polynomial_maximum(const std::vector<double>& x, const std::vector<double>& y,
+                             const std::size_t i, const std::size_t count) {
+    std::size_t start = i >= count / 2 ? i - count / 2 : 0;
     if (start + count > x.size()) {
         start = x.size() - count;
     }
-
-    const double center = x[maximum_index];
-    const double scale = std::max(
-        std::abs(x[start] - center), std::abs(x[start + count - 1] - center));
-    if (scale <= 0.0) {
-        return {x[maximum_index], y[maximum_index], maximum_index, 1};
+    const double scale = std::max(x[i] - x[start], x[start + count - 1] - x[i]);
+    if (!std::isfinite(scale) || !(scale > 0.0)) {
+        return {false, 0.0, 0.0};
     }
-
-    std::vector<std::vector<double>> matrix(count, std::vector<double>(count, 0.0));
-    std::vector<double> rhs(count, 0.0);
-    for (std::size_t row = 0; row < count; ++row) {
-        const double t = (x[start + row] - center) / scale;
-        double power = 1.0;
-        for (std::size_t column = 0; column < count; ++column) {
-            matrix[row][column] = power;
-            power *= t;
-        }
-        rhs[row] = y[start + row];
+    std::vector<double> t(count);
+    std::vector<double> values(count);
+    for (std::size_t k = 0; k < count; ++k) {
+        t[k] = (x[start + k] - x[i]) / scale;
+        values[k] = y[start + k];
     }
     std::vector<double> coefficients;
-    if (!solve_linear_system(matrix, rhs, coefficients)) {
-        return {x[maximum_index], y[maximum_index], maximum_index, 1};
+    if (!interpolating_polynomial(t, values, coefficients)) {
+        return {false, 0.0, 0.0};
     }
+    const std::vector<double> slope = derivative(coefficients);
+    const std::vector<double> curvature = derivative(slope);
 
-    const double lower = (x[start] - center) / scale;
-    const double upper = (x[start + count - 1] - center) / scale;
-    double best_t = (x[maximum_index] - center) / scale;
-    double best_y = polynomial_value(coefficients, best_t);
+    const double lower = t[i - 1 - start];
+    const double upper = t[i + 1 - start];
+    std::vector<double> breaks;
+    append_interior_roots(curvature, lower, upper, breaks);
+    std::sort(breaks.begin(), breaks.end());
+    breaks.insert(breaks.begin(), lower);
+    breaks.push_back(upper);
 
-    auto consider = [&](const double candidate) {
-        if (candidate < lower || candidate > upper) {
-            return;
+    bool found = false;
+    double best_t = 0.0;
+    double best_value = y[i];
+    for (std::size_t piece = 0; piece + 1 < breaks.size(); ++piece) {
+        double left = breaks[piece];
+        double right = breaks[piece + 1];
+        if (!(horner(slope, left) > 0.0) || !(horner(slope, right) <= 0.0)) {
+            continue;
         }
-        const double value = polynomial_value(coefficients, candidate);
-        if (std::isfinite(value) && value > best_y) {
-            best_y = value;
-            best_t = candidate;
-        }
-    };
-
-    consider(lower);
-    consider(upper);
-    constexpr int intervals = 512;
-    double previous_x = lower;
-    double previous_value = polynomial_derivative(coefficients, previous_x);
-    for (int index = 1; index <= intervals; ++index) {
-        const double current_x = lower + (upper - lower) * static_cast<double>(index) /
-                                             static_cast<double>(intervals);
-        const double current_value = polynomial_derivative(coefficients, current_x);
-        if (current_value == 0.0) {
-            consider(current_x);
-        } else if (previous_value == 0.0 || current_value * previous_value < 0.0) {
-            double left = previous_x;
-            double right = current_x;
-            double left_value = previous_value;
-            for (int iteration = 0; iteration < 80; ++iteration) {
-                const double midpoint = 0.5 * (left + right);
-                const double midpoint_value = polynomial_derivative(coefficients, midpoint);
-                if (std::abs(midpoint_value) < 1.0e-14) {
-                    left = right = midpoint;
-                    break;
-                }
-                if (left_value * midpoint_value <= 0.0) {
-                    right = midpoint;
-                } else {
-                    left = midpoint;
-                    left_value = midpoint_value;
-                }
+        for (int step = 0; step < kBisectionSteps; ++step) {
+            const double middle = 0.5 * (left + right);
+            if (middle <= left || middle >= right) {
+                break;
             }
-            consider(0.5 * (left + right));
+            if (horner(slope, middle) > 0.0) {
+                left = middle;
+            } else {
+                right = middle;
+            }
         }
-        previous_x = current_x;
-        previous_value = current_value;
+        const double root = 0.5 * (left + right);
+        const double value = horner(coefficients, root);
+        if (value > best_value) {
+            found = true;
+            best_t = root;
+            best_value = value;
+        }
     }
+    if (!found) {
+        return {false, 0.0, 0.0};
+    }
+    return admit(x[i] + scale * best_t, best_value, x, y, i);
+}
 
-    // Guard against an oscillatory polynomial overshooting by an unreasonable
-    // amount.  Falling back to the sampled maximum is safer than reporting a
-    // spurious variational bottleneck.
-    const double local_span = *std::max_element(y.begin() + static_cast<std::ptrdiff_t>(start),
-                                                y.begin() + static_cast<std::ptrdiff_t>(start + count)) -
-                              *std::min_element(y.begin() + static_cast<std::ptrdiff_t>(start),
-                                                y.begin() + static_cast<std::ptrdiff_t>(start + count));
-    if (!std::isfinite(best_y) || best_y > y[maximum_index] + 2.0 * std::max(1.0, local_span)) {
-        return {x[maximum_index], y[maximum_index], maximum_index, 1};
+RefinedMaximum refine_maximum_impl(const std::vector<double>& x, const std::vector<double>& y,
+                                   const std::size_t max_points) {
+    const auto maximum_iterator = std::max_element(y.begin(), y.end());
+    const std::size_t i = static_cast<std::size_t>(std::distance(y.begin(), maximum_iterator));
+    const RefinedMaximum sample = {x[i], y[i], i, 1};
+    if (x.size() < 3 || i == 0 || i + 1 == x.size()) {
+        return sample;
     }
-    return {center + scale * best_t, best_y, maximum_index, count};
+    const std::size_t count = std::min(max_points, x.size());
+    if (count > 3) {
+        const Candidate polynomial = polynomial_maximum(x, y, i, count);
+        if (polynomial.accepted) {
+            return {polynomial.x, polynomial.y, i, count};
+        }
+    }
+    const Candidate parabola = quadratic_vertex(x, y, i);
+    if (parabola.accepted) {
+        return {parabola.x, parabola.y, i, 3};
+    }
+    return sample;
+}
+
+bool all_finite(const std::vector<double>& values) {
+    return std::all_of(values.begin(), values.end(),
+                       [](const double value) { return std::isfinite(value); });
 }
 
 PyObject* py_refine_maximum(PyObject*, PyObject* args) {
     PyObject* x_object = nullptr;
     PyObject* y_object = nullptr;
-    if (!PyArg_ParseTuple(args, "OO:refine_maximum", &x_object, &y_object)) {
+    Py_ssize_t max_points = kMinFitPoints;
+    if (!PyArg_ParseTuple(args, "OO|n:refine_maximum", &x_object, &y_object, &max_points)) {
         return nullptr;
     }
     std::vector<double> x;
@@ -190,11 +261,20 @@ PyObject* py_refine_maximum(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "x and y must have equal, non-zero length");
         return nullptr;
     }
+    if (!all_finite(x) || !all_finite(y)) {
+        PyErr_SetString(PyExc_ValueError, "x and y must be finite");
+        return nullptr;
+    }
     if (!strictly_increasing(x)) {
         PyErr_SetString(PyExc_ValueError, "x must be strictly increasing");
         return nullptr;
     }
-    const RefinedMaximum result = refine_maximum_impl(x, y);
+    if (max_points < kMinFitPoints || max_points > kMaxFitPoints) {
+        PyErr_SetString(PyExc_ValueError, "max_points must be 3, 4 or 5");
+        return nullptr;
+    }
+    const RefinedMaximum result =
+        refine_maximum_impl(x, y, static_cast<std::size_t>(max_points));
     return Py_BuildValue("ddnn", result.x, result.y,
                          static_cast<Py_ssize_t>(result.sample_index),
                          static_cast<Py_ssize_t>(result.fit_points));
@@ -204,6 +284,9 @@ PyObject* py_refine_maximum(PyObject*, PyObject* args) {
 
 PyMethodDef pyrate_fit_methods[] = {
     {"refine_maximum", py_refine_maximum, METH_VARARGS,
-     "Refine a sampled maximum using up to five local points."},
+     "refine_maximum(x, y, max_points=3) -> (coordinate, value, sample_index, fit_points)\n\n"
+     "Refine the first sampled maximum inside [x[i-1], x[i+1]] with the parabola through\n"
+     "three points (or an interpolant through up to max_points points), never exceeding\n"
+     "y[i] + (y[i] - min(y[i-1], y[i+1])).  Falls back to the sample (fit_points = 1)."},
     {nullptr, nullptr, 0, nullptr},
 };
