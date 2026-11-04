@@ -72,7 +72,7 @@ double linear_sqrt_integral(const double u0, const double u1) {
         return 0.0;
     }
     const double delta = u1 - u0;
-    const double scale = std::max({1.0, std::abs(u0), std::abs(u1)});
+    const double scale = std::max({1.0e-300, std::abs(u0), std::abs(u1)});
     if (std::abs(delta) <= std::numeric_limits<double>::epsilon() * scale) {
         return std::sqrt(std::max(0.0, u0));
     }
