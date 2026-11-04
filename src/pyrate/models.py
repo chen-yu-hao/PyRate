@@ -30,7 +30,8 @@ class Atom:
     def __post_init__(self) -> None:
         symbol = canonical_symbol(self.symbol)
         object.__setattr__(self, "symbol", symbol)
-        mass = (isotope_mass_amu(symbol, self.isotope) if self.isotope is not None\n                else atomic_mass_amu(symbol)) if self.mass_amu is None else float(self.mass_amu)
+        mass = (isotope_mass_amu(symbol, self.isotope) if self.isotope is not None
+                else atomic_mass_amu(symbol)) if self.mass_amu is None else float(self.mass_amu)
         if mass <= 0.0:
             raise ValueError("atom mass must be positive")
         object.__setattr__(self, "mass_amu", mass)
@@ -53,7 +54,8 @@ class Atom:
             x_angstrom=float(xyz[0]),
             y_angstrom=float(xyz[1]),
             z_angstrom=float(xyz[2]),
-            mass_amu=float(data["mass_amu"]) if data.get("mass_amu") is not None else None,\n            isotope=int(data["isotope"]) if data.get("isotope") is not None else None,
+            mass_amu=float(data["mass_amu"]) if data.get("mass_amu") is not None else None,
+            isotope=int(data["isotope"]) if data.get("isotope") is not None else None,
         )
 
 
@@ -265,7 +267,8 @@ class Reaction:
     transition_state: Species
     products: tuple[Species, ...] = ()
     path: ReactionPath | None = None
-    standard_pressure_pa: float = DEFAULT_STANDARD_PRESSURE_PA\n    constants_profile: str = "codata2018"
+    standard_pressure_pa: float = DEFAULT_STANDARD_PRESSURE_PA
+    constants_profile: str = "codata2018"
 
     def __post_init__(self) -> None:
         reactants = tuple(self.reactants)
@@ -274,7 +277,8 @@ class Reaction:
             raise ValueError("reaction requires at least one reactant")
         if len(reactants) > 2:
             raise NotImplementedError("the current public API supports uni- and bimolecular rates")
-        object.__setattr__(self, "constants_profile", validate_constants_profile(self.constants_profile))\n        if self.standard_pressure_pa <= 0.0:
+        object.__setattr__(self, "constants_profile", validate_constants_profile(self.constants_profile))
+        if self.standard_pressure_pa <= 0.0:
             raise ValueError("standard pressure must be positive")
         if len(self.transition_state.imaginary_frequencies_cm1) > 1:
             raise ValueError("transition state may contain at most one imaginary frequency")
