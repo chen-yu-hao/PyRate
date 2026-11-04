@@ -70,7 +70,9 @@ for row in result.rows:
 
 - 公开输入：能量 `kJ mol⁻¹`、频率 `cm⁻¹`、质量 `amu`、长度 `Å`；
 - 内核：SI，每分子能量用于隧穿积分；
-- 默认气相标准压力：`1 bar`；\n- `constants_profile`：目前只接受 `codata2018`，不支持的配置会报错；\n- 原子可传入 `isotope` 质量数，查表返回显式的中性核素质量；
+- 默认气相标准压力：`1 bar`；
+- `constants_profile`：目前只接受 `codata2018`，不支持的配置会报错；
+- 原子可传入 `isotope` 质量数，查表返回显式的中性核素质量；
 - 单分子速率：`s⁻¹`；
 - 双分子内部单位：`m³ mol⁻¹ s⁻¹`，可输出 `L mol⁻¹ s⁻¹` 或 `cm³ molecule⁻¹ s⁻¹`；
 - `electronic_energy_kj_mol` 不含零点能；默认由正频率加入谐振零点能；
