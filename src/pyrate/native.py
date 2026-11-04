@@ -155,8 +155,7 @@ def wkb_exponent(
         raise ValueError("coordinates and potentials require matching lengths of at least 2")
     if any(right <= left for left, right in zip(coordinates, coordinates[1:])):
         raise ValueError("coordinates must be strictly increasing")
-    if reduced_mass_kg <= 0.0:
-        raise ValueError("reduced mass must be positive")
+    if not all(map(math.isfinite, coordinates + potentials + (energy_j_per_molecule, reduced_mass_kg))):\n        raise ValueError("coordinates, potentials, energy and mass must be finite")\n    if reduced_mass_kg <= 0.0:\n        raise ValueError("reduced mass must be positive")
     if HAS_NATIVE:
         return float(
             _cpp.wkb_exponent(
