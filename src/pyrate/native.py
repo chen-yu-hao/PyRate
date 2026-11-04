@@ -131,7 +131,7 @@ def _linear_sqrt_integral(u0: float, u1: float) -> float:
     if u0 <= 0.0 and u1 <= 0.0:
         return 0.0
     delta = u1 - u0
-    scale = max(1.0, abs(u0), abs(u1))
+    scale = max(abs(u0), abs(u1), 1.0e-300)
     if abs(delta) <= np.finfo(float).eps * scale:
         return math.sqrt(max(0.0, u0))
     if u0 > 0.0 and u1 > 0.0:
