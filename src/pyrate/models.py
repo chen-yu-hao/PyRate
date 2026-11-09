@@ -231,8 +231,11 @@ class TunnelingProfile:
     energies_kj_mol: tuple[float, ...]
     reduced_mass_amu: float
     energy_grid_points: int = 400
+    transmission: str = "uniform"
 
     def __post_init__(self) -> None:
+        if self.transmission not in {"uniform", "primitive"}:
+            raise ValueError("transmission must be 'uniform' or 'primitive'")
         coordinates = _as_float_tuple(self.coordinates_angstrom)
         energies = _as_float_tuple(self.energies_kj_mol)
         if len(coordinates) != len(energies) or len(coordinates) < 3:
@@ -253,6 +256,7 @@ class TunnelingProfile:
             energies_kj_mol=tuple(float(value) for value in data["energies_kj_mol"]),
             reduced_mass_amu=float(data["reduced_mass_amu"]),
             energy_grid_points=int(data.get("energy_grid_points", 400)),
+            transmission=str(data.get("transmission", "uniform")).lower(),
         )
 
 

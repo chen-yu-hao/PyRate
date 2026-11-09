@@ -113,7 +113,8 @@ double thermal_wkb_impl(const std::vector<double>& coordinates_m,
                         std::vector<double> potentials_j,
                         const double temperature,
                         const double reduced_mass_kg,
-                        int energy_grid_points) {
+                        int energy_grid_points,
+                        const bool uniform) {
     const double reference = potentials_j.front();
     for (double& value : potentials_j) {
         value -= reference;
@@ -132,6 +133,17 @@ double thermal_wkb_impl(const std::vector<double>& coordinates_m,
     auto integrand = [&](const double energy) {
         const double exponent = wkb_exponent_impl(
             coordinates_m, potentials_j, energy, reduced_mass_kg);
+        if (uniform) {
+            // Kemble uniform semiclassical P(E) = 1 / (1 + exp(2 theta)) below the
+            // barrier top and nonclassical reflection P(E) = 1 - P(2 V - E) above it.
+            // Folding the above-barrier part onto E < V gives
+            //   kappa = 1 + int_0^V beta P(E) 2 sinh(beta (V - E)) dE.
+            const double a = beta * (barrier - energy);
+            const double log_one_plus = exponent > 0.0
+                ? exponent + std::log1p(std::exp(-exponent))
+                : std::log1p(std::exp(exponent));
+            return beta * (safe_exp(a - log_one_plus) - safe_exp(-a - log_one_plus));
+        }
         // This is the integrand after multiplying the canonical transmission
         // integral by beta * exp(beta * V_barrier).  It avoids subtracting two
         // exponentially small numbers at low temperature.
@@ -409,9 +421,10 @@ PyObject* py_thermal_wkb_kappa(PyObject*, PyObject* args) {
     double temperature = 0.0;
     double reduced_mass = 0.0;
     int energy_grid_points = 400;
-    if (!PyArg_ParseTuple(args, "OOdd|i:thermal_wkb_kappa", &coordinate_object,
+    int uniform = 1;
+    if (!PyArg_ParseTuple(args, "OOdd|ip:thermal_wkb_kappa", &coordinate_object,
                           &potential_object, &temperature, &reduced_mass,
-                          &energy_grid_points)) {
+                          &energy_grid_points, &uniform)) {
         return nullptr;
     }
     std::vector<double> coordinates;
@@ -440,7 +453,7 @@ PyObject* py_thermal_wkb_kappa(PyObject*, PyObject* args) {
     double result = 0.0;
     Py_BEGIN_ALLOW_THREADS
     result = thermal_wkb_impl(
-        coordinates, potentials, temperature, reduced_mass, energy_grid_points);
+        coordinates, potentials, temperature, reduced_mass, energy_grid_points, uniform != 0);
     Py_END_ALLOW_THREADS
     return PyFloat_FromDouble(result);
 }

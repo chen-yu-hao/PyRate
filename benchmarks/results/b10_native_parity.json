@@ -1,10 +1,10 @@
 {
   "provenance": {
     "commit": "3979934ef1f49918e1521b032176158c18ffeb44",
-    "utc": "2026-11-09T05:51:50Z",
-    "python": "3.12.16",
-    "numpy": "2.5.4",
-    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43"
+    "utc": "2026-11-09T06:13:58Z",
+    "python": "3.13.18",
+    "numpy": "2.5.3",
+    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
   },
   "native": {
     "case": "b10_native_parity",
@@ -18,14 +18,14 @@
       },
       "timings": {
         "beyer_swinehart(30 modes, 1e5 grains)": {
-          "cpp_s": 0.0042189069999949425,
-          "python_s": 0.40686807199999464,
-          "speedup": 96.43921328450293
+          "cpp_s": 0.0035606010000037713,
+          "python_s": 0.4026724430000286,
+          "speedup": 113.09114472517479
         },
         "thermal_wkb_kappa(401 pts, 400 E)": {
-          "cpp_s": 0.00031573799999762286,
-          "python_s": 0.07974093100000346,
-          "speedup": 252.55411448924048
+          "cpp_s": 0.000262426000006144,
+          "python_s": 0.0654385259999799,
+          "speedup": 249.35991859971128
         }
       },
       "max_rel_diff": {
@@ -33,7 +33,7 @@
         "wigner_kappa": 0.0,
         "refine_maximum": 1.986830955291018e-12,
         "wkb_exponent": 2.3872645678321937e-16,
-        "thermal_wkb_kappa": 6.443946368644027e-16,
+        "thermal_wkb_kappa": 1.794405248103486e-16,
         "beyer_swinehart": 0.0
       }
     },
@@ -64,7 +64,7 @@
       },
       {
         "name": "thermal_wkb_kappa: max rel diff C++ vs Python",
-        "value": 6.443946368644027e-16,
+        "value": 1.794405248103486e-16,
         "threshold": 1e-12,
         "status": "pass"
       },
@@ -76,13 +76,13 @@
       },
       {
         "name": "speedup beyer_swinehart(30 modes, 1e5 grains)",
-        "value": 96.43921328450293,
+        "value": 113.09114472517479,
         "threshold": null,
         "status": "info"
       },
       {
         "name": "speedup thermal_wkb_kappa(401 pts, 400 E)",
-        "value": 252.55411448924048,
+        "value": 249.35991859971128,
         "threshold": null,
         "status": "info"
       }

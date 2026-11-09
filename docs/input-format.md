@@ -98,6 +98,7 @@ coordinates_angstrom = [-1.0, -0.5, 0.0, 0.5, 1.0]
 energies_kj_mol = [0.0, 12.0, 25.0, 12.0, 0.0]
 reduced_mass_amu = 1.0
 energy_grid_points = 400
+transmission = "uniform"   # uniform（默认）| primitive
 ```
 
 第一个能量是正向反应物参考。坐标必须严格递增。

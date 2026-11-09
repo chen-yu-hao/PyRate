@@ -73,8 +73,12 @@ k_CVT(T) = min_s k_GT(s,T)
 
 ```text
 γ(E) = 2/ħ ∫ sqrt(2 μ [V(x)-E]) dx
-P(E) = exp[-γ(E)]
+P(E) = 1 / (1 + exp[γ(E)])            E ≤ V_max   （Kemble 均匀半经典）
+P(E) = 1 - P(2 V_max - E)             V_max < E < 2 V_max（非经典反射）
+κ(T) = 1 + β ∫_0^{V_max} P(E) · 2 sinh[β (V_max - E)] dE
 ```
+
+该形式与 Polyrate ZCT/SCT 的处理一致，对抛物势垒精确给出 Bell 公式 (u/2)/sin(u/2)。旧的 `transmission = "primitive"`（P = e^{-γ}，势垒顶以上取 1）仍可选，但高温下 κ − 1 ≈ u/2π，会系统性高估（见 `benchmarks/b07_eckart_tunneling.py`）。
 
 积分对每个线性片段的 `sqrt(V-E)` 使用解析积分。canonical 修正用 Simpson 能量积分，并采用移位指数形式避免低温下的上溢/下溢。
 

@@ -6,9 +6,10 @@
   (Kemble P = 1/(1+e^{2θ}) with nonclassical reflection), Bell's parabolic
   formula and Wigner's correction.
 
-The κ comparison is reported as information: the current kernel uses
-P = e^{−2θ} below and P = 1 above the barrier top, which overestimates κ at
-high temperature (κ − 1 ≈ u/2π instead of O(u²)).
+PyRate's default (uniform) kernel must reproduce the independent uniform
+reference and, for a parabolic barrier, Bell's exact result.  The legacy
+"primitive" form (P = e^{−2θ}, P = 1 above the top) is reported for comparison;
+it overestimates κ at high temperature (κ − 1 ≈ u/2π instead of O(u²)).
 """
 
 from __future__ import annotations
@@ -93,14 +94,32 @@ def run() -> dict:
             "exact_eckart": kappa_exact(t),
             "uniform_semiclassical": kappa_uniform(t),
             "pyrate_wkb": thermal_wkb_kappa(x, v, t, MU, 2000),
+            "pyrate_wkb_primitive": thermal_wkb_kappa(x, v, t, MU, 2000, "primitive"),
         }
     data["kappa"] = rows
+    worst = max(abs(r["pyrate_wkb"] / r["uniform_semiclassical"] - 1) for r in rows.values())
+    checks.append(check("κ_PyRate vs independent uniform semiclassical reference (max rel)", worst, 1e-4))
+
+    # Parabolic barrier: uniform semiclassical κ equals Bell's (u/2)/sin(u/2).
+    w = 2 * math.pi * LIGHT_SPEED_M_S * 100 * 1000.0
+    vp = 200e3 / AVOGADRO_MOL
+    xm = math.sqrt(2 * vp / (MU * w * w))
+    xp = np.linspace(-xm, xm, 2001)
+    bell = {}
+    for t in (600.0, 1000.0, 2000.0):
+        u = HBAR_J_S * w / (BOLTZMANN_J_K * t)
+        k = thermal_wkb_kappa(tuple(xp), tuple(vp - 0.5 * MU * w * w * xp**2), t, MU, 400)
+        bell[str(t)] = {"pyrate": k, "bell": (u / 2) / math.sin(u / 2)}
+    data["parabolic_bell"] = bell
+    checks.append(check("parabolic barrier: κ_PyRate vs Bell (max rel)",
+                        max(abs(r["pyrate"] / r["bell"] - 1) for r in bell.values()), 1e-4))  # piecewise-linear grid error
     hot = rows["5000.0"]
     checks.append(check("Wigner vs Bell at 5000 K (rel)", abs(hot["wigner"] / hot["bell_parabolic"] - 1), 1e-3))
     for t in ("300.0", "1000.0", "2000.0"):
         r = rows[t]
         checks.append(check(f"κ_PyRate/κ_exact at {float(t):g} K", r["pyrate_wkb"] / r["exact_eckart"], None))
-        checks.append(check(f"κ_uniform/κ_exact at {float(t):g} K", r["uniform_semiclassical"] / r["exact_eckart"], None))
+        checks.append(check(f"κ_primitive/κ_exact at {float(t):g} K (legacy form)",
+                            r["pyrate_wkb_primitive"] / r["exact_eckart"], None))
     return {
         "case": "b07_eckart_tunneling",
         "title": "Eckart barrier: WKB action and canonical tunneling coefficients",

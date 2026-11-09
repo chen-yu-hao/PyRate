@@ -38,13 +38,19 @@ def profile_wkb_kappa(profile: TunnelingProfile, temperature_k: float) -> float:
         temperature_k,
         profile.reduced_mass_amu * AMU_KG,
         profile.energy_grid_points,
+        profile.transmission,
     )
 
 
 def profile_transmission_probability(
     profile: TunnelingProfile, energy_kj_mol: float
 ) -> float:
-    """Return ``exp(-γ(E))`` for a single energy below the barrier."""
+    """Return the 1D semiclassical transmission probability at one energy.
+
+    With ``profile.transmission == "uniform"`` this is ``1/(1 + e^{γ})`` below
+    the barrier top and ``1 − P(2V − E)`` above it; ``"primitive"`` returns
+    ``e^{−γ}`` below and 1 above the top.
+    """
 
     coordinates_m = tuple(value * ANGSTROM_M for value in profile.coordinates_angstrom)
     reference = profile.energies_kj_mol[0]
@@ -54,9 +60,19 @@ def profile_transmission_probability(
     )
     energy_j = (energy_kj_mol - reference) * 1000.0 / AVOGADRO_MOL
     barrier = max(energies_j)
-    if energy_j >= barrier:
+    mass = profile.reduced_mass_amu * AMU_KG
+    if profile.transmission == "primitive":
+        if energy_j >= barrier:
+            return 1.0
+        exponent = wkb_exponent(coordinates_m, energies_j, energy_j, mass)
+        return math.exp(-exponent) if exponent < 745.0 else 0.0
+
+    def below(e: float) -> float:
+        exponent = wkb_exponent(coordinates_m, energies_j, e, mass)
+        return 1.0 / (1.0 + math.exp(exponent)) if exponent < 709.0 else 0.0
+
+    if energy_j <= barrier:
+        return below(energy_j)
+    if energy_j >= 2.0 * barrier:
         return 1.0
-    exponent = wkb_exponent(
-        coordinates_m, energies_j, energy_j, profile.reduced_mass_amu * AMU_KG
-    )
-    return math.exp(-exponent) if exponent < 745.0 else 0.0
+    return 1.0 - below(2.0 * barrier - energy_j)

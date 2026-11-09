@@ -177,13 +177,33 @@ def wkb_exponent(
     return 2.0 * math.sqrt(2.0 * reduced_mass_kg) * integral / HBAR_J_S
 
 
+def _safe_exp(value: float) -> float:
+    if value < -745.0:
+        return 0.0
+    if value > 709.0:
+        return math.inf
+    return math.exp(value)
+
+
 def thermal_wkb_kappa(
     coordinates_m: Sequence[float],
     potentials_j_per_molecule: Sequence[float],
     temperature_k: float,
     reduced_mass_kg: float,
     energy_grid_points: int = 400,
+    transmission: str = "uniform",
 ) -> float:
+    """Canonical 1D semiclassical tunneling coefficient.
+
+    ``transmission="uniform"`` (default) uses Kemble's uniform semiclassical
+    probability ``P = 1/(1 + e^{2θ})`` with nonclassical reflection above the
+    barrier top, which is exact for a parabolic barrier.  ``"primitive"`` keeps
+    the earlier ``P = e^{-2θ}`` (``P = 1`` above the top) form, which
+    overestimates κ at high temperature (κ − 1 ≈ u/2π).
+    """
+    if transmission not in {"uniform", "primitive"}:
+        raise ValueError("transmission must be 'uniform' or 'primitive'")
+    uniform = transmission == "uniform"
     coordinates = tuple(float(value) for value in coordinates_m)
     potentials = tuple(float(value) for value in potentials_j_per_molecule)
     if len(coordinates) != len(potentials) or len(coordinates) < 3:
@@ -202,6 +222,7 @@ def thermal_wkb_kappa(
                 float(temperature_k),
                 float(reduced_mass_kg),
                 int(energy_grid_points),
+                uniform,
             )
         )
 
@@ -215,6 +236,11 @@ def thermal_wkb_kappa(
 
     def integrand(energy: float) -> float:
         exponent = wkb_exponent(coordinates, shifted, energy, reduced_mass_kg)
+        if uniform:
+            a = beta * (barrier - energy)
+            log_one_plus = (exponent + math.log1p(math.exp(-exponent)) if exponent > 0.0
+                            else math.log1p(math.exp(exponent)))
+            return beta * (_safe_exp(a - log_one_plus) - _safe_exp(-a - log_one_plus))
         log_value = beta * (barrier - energy) - exponent
         if log_value < -745.0:
             return 0.0

@@ -1,8 +1,8 @@
 # Paper benchmark results
 
 - commit: `3979934ef1f49918e1521b032176158c18ffeb44`
-- run (UTC): 2026-11-09T05:51:50Z
-- Python 3.12.16, NumPy 2.5.4, Linux-7.0.0-1019-azure-x86_64-with-glibc2.43
+- run (UTC): 2026-11-09T06:13:58Z
+- Python 3.13.18, NumPy 2.5.3, Linux-6.18.44-fc-v310-x86_64-with-glibc2.39
 
 **Overall: all checks passed**
 
@@ -97,13 +97,15 @@ Native backend `cpp`; worst C++ vs Python difference over check values: 4.70e-16
 |---|---|---|---|
 | ℹ️ | WKB action: observed order 4001→8001 points | 0.6515 | — |
 | ✅ | WKB action rel error, 8001 points | 9.669e-05 | 0.0001 |
+| ✅ | κ_PyRate vs independent uniform semiclassical reference (max rel) | 4.768e-06 | 0.0001 |
+| ✅ | parabolic barrier: κ_PyRate vs Bell (max rel) | 1.058e-05 | 0.0001 |
 | ✅ | Wigner vs Bell at 5000 K (rel) | 4.206e-05 | 0.001 |
-| ℹ️ | κ_PyRate/κ_exact at 300 K | 0.9443 | — |
-| ℹ️ | κ_uniform/κ_exact at 300 K | 0.8534 | — |
-| ℹ️ | κ_PyRate/κ_exact at 1000 K | 1.182 | — |
-| ℹ️ | κ_uniform/κ_exact at 1000 K | 0.9496 | — |
-| ℹ️ | κ_PyRate/κ_exact at 2000 K | 1.119 | — |
-| ℹ️ | κ_uniform/κ_exact at 2000 K | 0.9764 | — |
+| ℹ️ | κ_PyRate/κ_exact at 300 K | 0.8534 | — |
+| ℹ️ | κ_primitive/κ_exact at 300 K (legacy form) | 0.9443 | — |
+| ℹ️ | κ_PyRate/κ_exact at 1000 K | 0.9496 | — |
+| ℹ️ | κ_primitive/κ_exact at 1000 K (legacy form) | 1.182 | — |
+| ℹ️ | κ_PyRate/κ_exact at 2000 K | 0.9764 | — |
+| ℹ️ | κ_primitive/κ_exact at 2000 K (legacy form) | 1.119 | — |
 
 References: Eckart, Phys. Rev. 35, 1303 (1930); Wigner, Z. Phys. Chem. B 19, 203 (1932); Bell, Trans. Faraday Soc. 55, 1 (1959); Johnston & Heicklen, J. Phys. Chem. 66, 532 (1962); Garrett & Truhlar, J. Phys. Chem. 83, 2921 (1979)
 
@@ -115,10 +117,10 @@ References: Eckart, Phys. Rev. 35, 1303 (1930); Wigner, Z. Phys. Chem. B 19, 203
 | ✅ | wigner_kappa: max rel diff C++ vs Python | 0 | 1e-12 |
 | ✅ | refine_maximum: max rel diff C++ vs Python | 1.987e-12 | 1e-10 |
 | ✅ | wkb_exponent: max rel diff C++ vs Python | 2.387e-16 | 1e-12 |
-| ✅ | thermal_wkb_kappa: max rel diff C++ vs Python | 6.444e-16 | 1e-12 |
+| ✅ | thermal_wkb_kappa: max rel diff C++ vs Python | 1.794e-16 | 1e-12 |
 | ✅ | beyer_swinehart: max rel diff C++ vs Python | 0 | 0 |
-| ℹ️ | speedup beyer_swinehart(30 modes, 1e5 grains) | 96.44 | — |
-| ℹ️ | speedup thermal_wkb_kappa(401 pts, 400 E) | 252.6 | — |
+| ℹ️ | speedup beyer_swinehart(30 modes, 1e5 grains) | 113.1 | — |
+| ℹ️ | speedup thermal_wkb_kappa(401 pts, 400 E) | 249.4 | — |
 
 
 

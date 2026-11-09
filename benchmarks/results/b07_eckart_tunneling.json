@@ -1,10 +1,10 @@
 {
   "provenance": {
     "commit": "3979934ef1f49918e1521b032176158c18ffeb44",
-    "utc": "2026-11-09T05:51:50Z",
-    "python": "3.12.16",
-    "numpy": "2.5.4",
-    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43"
+    "utc": "2026-11-09T06:13:58Z",
+    "python": "3.13.18",
+    "numpy": "2.5.3",
+    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
   },
   "native": {
     "case": "b07_eckart_tunneling",
@@ -30,6 +30,18 @@
         "status": "pass"
       },
       {
+        "name": "κ_PyRate vs independent uniform semiclassical reference (max rel)",
+        "value": 4.768015557043981e-06,
+        "threshold": 0.0001,
+        "status": "pass"
+      },
+      {
+        "name": "parabolic barrier: κ_PyRate vs Bell (max rel)",
+        "value": 1.0575118655431481e-05,
+        "threshold": 0.0001,
+        "status": "pass"
+      },
+      {
         "name": "Wigner vs Bell at 5000 K (rel)",
         "value": 4.20625527112195e-05,
         "threshold": 0.001,
@@ -37,37 +49,37 @@
       },
       {
         "name": "κ_PyRate/κ_exact at 300 K",
+        "value": 0.8534367099775623,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_primitive/κ_exact at 300 K (legacy form)",
         "value": 0.9443140229241216,
         "threshold": null,
         "status": "info"
       },
       {
-        "name": "κ_uniform/κ_exact at 300 K",
-        "value": 0.8534330319982689,
+        "name": "κ_PyRate/κ_exact at 1000 K",
+        "value": 0.9496172725552369,
         "threshold": null,
         "status": "info"
       },
       {
-        "name": "κ_PyRate/κ_exact at 1000 K",
+        "name": "κ_primitive/κ_exact at 1000 K (legacy form)",
         "value": 1.1816250034985338,
         "threshold": null,
         "status": "info"
       },
       {
-        "name": "κ_uniform/κ_exact at 1000 K",
-        "value": 0.9496161045386601,
-        "threshold": null,
-        "status": "info"
-      },
-      {
         "name": "κ_PyRate/κ_exact at 2000 K",
-        "value": 1.1190935677499658,
+        "value": 0.9763645804297698,
         "threshold": null,
         "status": "info"
       },
       {
-        "name": "κ_uniform/κ_exact at 2000 K",
-        "value": 0.9763642645643703,
+        "name": "κ_primitive/κ_exact at 2000 K (legacy form)",
+        "value": 1.1190935677499658,
         "threshold": null,
         "status": "info"
       }
@@ -93,7 +105,8 @@
           "bell_parabolic": null,
           "exact_eckart": 797.1755404431893,
           "uniform_semiclassical": 668.6324864874009,
-          "pyrate_wkb": 672.1058244519447
+          "pyrate_wkb": 668.6315202786589,
+          "pyrate_wkb_primitive": 672.1058244519447
         },
         "250.0": {
           "u": 8.632661265023604,
@@ -101,7 +114,8 @@
           "bell_parabolic": null,
           "exact_eckart": 51.22871841827561,
           "uniform_semiclassical": 43.2048193666181,
-          "pyrate_wkb": 44.92944764434743
+          "pyrate_wkb": 43.20491495221142,
+          "pyrate_wkb_primitive": 44.92944764434743
         },
         "300.0": {
           "u": 7.193884387519669,
@@ -109,7 +123,8 @@
           "bell_parabolic": null,
           "exact_eckart": 12.95871589934524,
           "uniform_semiclassical": 11.059396200782382,
-          "pyrate_wkb": 12.23709714284148
+          "pyrate_wkb": 11.059443862671129,
+          "pyrate_wkb_primitive": 12.23709714284148
         },
         "400.0": {
           "u": 5.395413290639752,
@@ -117,7 +132,8 @@
           "bell_parabolic": 6.281740306272262,
           "exact_eckart": 3.8718187311161403,
           "uniform_semiclassical": 3.399903688840552,
-          "pyrate_wkb": 4.16039935240477
+          "pyrate_wkb": 3.399919899634233,
+          "pyrate_wkb_primitive": 4.160399352404768
         },
         "600.0": {
           "u": 3.5969421937598347,
@@ -125,7 +141,8 @@
           "bell_parabolic": 1.846112120037705,
           "exact_eckart": 1.8123211794444232,
           "uniform_semiclassical": 1.6579235594185684,
-          "pyrate_wkb": 2.1363246914615717
+          "pyrate_wkb": 1.6579285007599305,
+          "pyrate_wkb_primitive": 2.1363246914615717
         },
         "1000.0": {
           "u": 2.158165316255901,
@@ -133,7 +150,8 @@
           "bell_parabolic": 1.2241088756292247,
           "exact_eckart": 1.2551462665509279,
           "uniform_semiclassical": 1.1919071082683348,
-          "pyrate_wkb": 1.4831122116044118
+          "pyrate_wkb": 1.1919085742999804,
+          "pyrate_wkb_primitive": 1.4831122116044118
         },
         "2000.0": {
           "u": 1.0790826581279505,
@@ -141,7 +159,8 @@
           "bell_parabolic": 1.0502173675305624,
           "exact_eckart": 1.0694714981666793,
           "uniform_semiclassical": 1.044193752780065,
-          "pyrate_wkb": 1.1968386744902502
+          "pyrate_wkb": 1.0441940905891072,
+          "pyrate_wkb_primitive": 1.1968386744902502
         },
         "5000.0": {
           "u": 0.43163306325118017,
@@ -149,7 +168,22 @@
           "bell_parabolic": 1.0078051867459399,
           "exact_eckart": 1.0157962721202252,
           "uniform_semiclassical": 1.006914815344031,
-          "pyrate_wkb": 1.0707528784319893
+          "pyrate_wkb": 1.0069148681116782,
+          "pyrate_wkb_primitive": 1.0707528784319893
+        }
+      },
+      "parabolic_bell": {
+        "600.0": {
+          "pyrate": 1.2869303084159898,
+          "bell": 1.286916699119197
+        },
+        "1000.0": {
+          "pyrate": 1.091765445543234,
+          "bell": 1.0917611049789437
+        },
+        "2000.0": {
+          "pyrate": 1.021894343819942,
+          "bell": 1.0218933056099815
         }
       }
     },
@@ -183,6 +217,18 @@
         "status": "pass"
       },
       {
+        "name": "κ_PyRate vs independent uniform semiclassical reference (max rel)",
+        "value": 4.768015557043981e-06,
+        "threshold": 0.0001,
+        "status": "pass"
+      },
+      {
+        "name": "parabolic barrier: κ_PyRate vs Bell (max rel)",
+        "value": 1.0575118655431481e-05,
+        "threshold": 0.0001,
+        "status": "pass"
+      },
+      {
         "name": "Wigner vs Bell at 5000 K (rel)",
         "value": 4.20625527112195e-05,
         "threshold": 0.001,
@@ -190,37 +236,37 @@
       },
       {
         "name": "κ_PyRate/κ_exact at 300 K",
+        "value": 0.8534367099775623,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_primitive/κ_exact at 300 K (legacy form)",
         "value": 0.944314022924122,
         "threshold": null,
         "status": "info"
       },
       {
-        "name": "κ_uniform/κ_exact at 300 K",
-        "value": 0.8534330319982689,
+        "name": "κ_PyRate/κ_exact at 1000 K",
+        "value": 0.9496172725552369,
         "threshold": null,
         "status": "info"
       },
       {
-        "name": "κ_PyRate/κ_exact at 1000 K",
+        "name": "κ_primitive/κ_exact at 1000 K (legacy form)",
         "value": 1.1816250034985338,
         "threshold": null,
         "status": "info"
       },
       {
-        "name": "κ_uniform/κ_exact at 1000 K",
-        "value": 0.9496161045386601,
-        "threshold": null,
-        "status": "info"
-      },
-      {
         "name": "κ_PyRate/κ_exact at 2000 K",
-        "value": 1.1190935677499658,
+        "value": 0.9763645804297698,
         "threshold": null,
         "status": "info"
       },
       {
-        "name": "κ_uniform/κ_exact at 2000 K",
-        "value": 0.9763642645643703,
+        "name": "κ_primitive/κ_exact at 2000 K (legacy form)",
+        "value": 1.1190935677499658,
         "threshold": null,
         "status": "info"
       }
@@ -246,7 +292,8 @@
           "bell_parabolic": null,
           "exact_eckart": 797.1755404431893,
           "uniform_semiclassical": 668.6324864874009,
-          "pyrate_wkb": 672.1058244519447
+          "pyrate_wkb": 668.6315202786589,
+          "pyrate_wkb_primitive": 672.1058244519447
         },
         "250.0": {
           "u": 8.632661265023604,
@@ -254,7 +301,8 @@
           "bell_parabolic": null,
           "exact_eckart": 51.22871841827561,
           "uniform_semiclassical": 43.2048193666181,
-          "pyrate_wkb": 44.92944764434742
+          "pyrate_wkb": 43.20491495221142,
+          "pyrate_wkb_primitive": 44.92944764434742
         },
         "300.0": {
           "u": 7.193884387519669,
@@ -262,7 +310,8 @@
           "bell_parabolic": null,
           "exact_eckart": 12.95871589934524,
           "uniform_semiclassical": 11.059396200782382,
-          "pyrate_wkb": 12.237097142841485
+          "pyrate_wkb": 11.059443862671129,
+          "pyrate_wkb_primitive": 12.237097142841485
         },
         "400.0": {
           "u": 5.395413290639752,
@@ -270,7 +319,8 @@
           "bell_parabolic": 6.281740306272262,
           "exact_eckart": 3.8718187311161403,
           "uniform_semiclassical": 3.399903688840552,
-          "pyrate_wkb": 4.16039935240477
+          "pyrate_wkb": 3.399919899634233,
+          "pyrate_wkb_primitive": 4.16039935240477
         },
         "600.0": {
           "u": 3.5969421937598347,
@@ -278,7 +328,8 @@
           "bell_parabolic": 1.846112120037705,
           "exact_eckart": 1.8123211794444232,
           "uniform_semiclassical": 1.6579235594185684,
-          "pyrate_wkb": 2.1363246914615712
+          "pyrate_wkb": 1.6579285007599305,
+          "pyrate_wkb_primitive": 2.1363246914615712
         },
         "1000.0": {
           "u": 2.158165316255901,
@@ -286,7 +337,8 @@
           "bell_parabolic": 1.2241088756292247,
           "exact_eckart": 1.2551462665509279,
           "uniform_semiclassical": 1.1919071082683348,
-          "pyrate_wkb": 1.4831122116044118
+          "pyrate_wkb": 1.1919085742999804,
+          "pyrate_wkb_primitive": 1.4831122116044118
         },
         "2000.0": {
           "u": 1.0790826581279505,
@@ -294,7 +346,8 @@
           "bell_parabolic": 1.0502173675305624,
           "exact_eckart": 1.0694714981666793,
           "uniform_semiclassical": 1.044193752780065,
-          "pyrate_wkb": 1.1968386744902502
+          "pyrate_wkb": 1.0441940905891072,
+          "pyrate_wkb_primitive": 1.1968386744902502
         },
         "5000.0": {
           "u": 0.43163306325118017,
@@ -302,7 +355,22 @@
           "bell_parabolic": 1.0078051867459399,
           "exact_eckart": 1.0157962721202252,
           "uniform_semiclassical": 1.006914815344031,
-          "pyrate_wkb": 1.0707528784319893
+          "pyrate_wkb": 1.0069148681116782,
+          "pyrate_wkb_primitive": 1.0707528784319893
+        }
+      },
+      "parabolic_bell": {
+        "600.0": {
+          "pyrate": 1.2869303084159898,
+          "bell": 1.286916699119197
+        },
+        "1000.0": {
+          "pyrate": 1.091765445543234,
+          "bell": 1.0917611049789437
+        },
+        "2000.0": {
+          "pyrate": 1.021894343819942,
+          "bell": 1.0218933056099815
         }
       }
     },
