@@ -1,10 +1,10 @@
 {
   "provenance": {
-    "commit": "3979934ef1f49918e1521b032176158c18ffeb44",
-    "utc": "2026-11-09T06:13:58Z",
-    "python": "3.13.18",
-    "numpy": "2.5.3",
-    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
+    "commit": "913220f2c8d72db3ef0f604d7b33693249991cdd",
+    "utc": "2026-11-09T06:19:57Z",
+    "python": "3.12.16",
+    "numpy": "2.5.4",
+    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43"
   },
   "native": {
     "case": "b05_tst_consistency",

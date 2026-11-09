@@ -1,8 +1,8 @@
 # Paper benchmark results
 
-- commit: `3979934ef1f49918e1521b032176158c18ffeb44`
-- run (UTC): 2026-11-09T06:13:58Z
-- Python 3.13.18, NumPy 2.5.3, Linux-6.18.44-fc-v310-x86_64-with-glibc2.39
+- commit: `913220f2c8d72db3ef0f604d7b33693249991cdd`
+- run (UTC): 2026-11-09T06:19:57Z
+- Python 3.12.16, NumPy 2.5.4, Linux-7.0.0-1019-azure-x86_64-with-glibc2.43
 
 **Overall: all checks passed**
 
@@ -14,17 +14,17 @@ Native backend `cpp`; worst C++ vs Python difference over check values: 0.00e+00
 
 | status | check | value | threshold |
 |---|---|---|---|
-| ✅ | H2O: max rel diff Cartesian vs GF | 1.221e-15 | 1e-08 |
+| ✅ | H2O: max rel diff Cartesian vs GF | 8.882e-16 | 1e-08 |
 | ✅ | H2O: rigid modes removed | 6 | 6 |
 | ✅ | H2O: max \|ω − ω_exp\| (cm⁻¹) | 1.896 | 3 |
-| ✅ | HDO: max rel diff Cartesian vs GF | 6.906e-14 | 1e-08 |
+| ✅ | HDO: max rel diff Cartesian vs GF | 6.85e-14 | 1e-08 |
 | ✅ | HDO: rigid modes removed | 6 | 6 |
-| ✅ | D2O: max rel diff Cartesian vs GF | 4.774e-15 | 1e-08 |
+| ✅ | D2O: max rel diff Cartesian vs GF | 1.11e-16 | 1e-08 |
 | ✅ | D2O: rigid modes removed | 6 | 6 |
 | ✅ | D2O: max \|ω − ω_exp\| (cm⁻¹) | 1.777 | 3 |
-| ✅ | H2O: rotated-frame invariance (max rel) | 1.649e-12 | 1e-10 |
-| ✅ | Teller–Redlich H2O/D2O rel diff | 4.552e-15 | 1e-09 |
-| ✅ | Teller–Redlich H2O/HDO rel diff | 9.059e-14 | 1e-09 |
+| ✅ | H2O: rotated-frame invariance (max rel) | 1.147e-13 | 1e-10 |
+| ✅ | Teller–Redlich H2O/D2O rel diff | 1.443e-15 | 1e-09 |
+| ✅ | Teller–Redlich H2O/HDO rel diff | 9.293e-14 | 1e-09 |
 
 References: Hoy, Mills & Strey, Mol. Phys. 24, 1265 (1972); Benedict, Gailar & Plyler, J. Chem. Phys. 24, 1139 (1956); Redlich, Z. Phys. Chem. B 28, 371 (1935)
 
@@ -77,7 +77,7 @@ References: Eyring, J. Chem. Phys. 3, 107 (1935); Evans & Polanyi, Trans. Farada
 
 ## b06_cvt_convergence: CVT bottleneck location and free energy on a manufactured profile
 
-Native backend `cpp`; worst C++ vs Python difference over check values: 1.49e-07.
+Native backend `cpp`; worst C++ vs Python difference over check values: 1.19e-07.
 
 | status | check | value | threshold |
 |---|---|---|---|
@@ -91,7 +91,7 @@ References: Truhlar & Garrett, Annu. Rev. Phys. Chem. 35, 159 (1984)
 
 ## b07_eckart_tunneling: Eckart barrier: WKB action and canonical tunneling coefficients
 
-Native backend `cpp`; worst C++ vs Python difference over check values: 4.70e-16.
+Native backend `cpp`; worst C++ vs Python difference over check values: 2.35e-16.
 
 | status | check | value | threshold |
 |---|---|---|---|
@@ -116,11 +116,11 @@ References: Eckart, Phys. Rev. 35, 1303 (1930); Wigner, Z. Phys. Chem. B 19, 203
 | ✅ | harmonic_log_partition: max rel diff C++ vs Python | 0 | 1e-12 |
 | ✅ | wigner_kappa: max rel diff C++ vs Python | 0 | 1e-12 |
 | ✅ | refine_maximum: max rel diff C++ vs Python | 1.987e-12 | 1e-10 |
-| ✅ | wkb_exponent: max rel diff C++ vs Python | 2.387e-16 | 1e-12 |
+| ✅ | wkb_exponent: max rel diff C++ vs Python | 2.419e-16 | 1e-12 |
 | ✅ | thermal_wkb_kappa: max rel diff C++ vs Python | 1.794e-16 | 1e-12 |
 | ✅ | beyer_swinehart: max rel diff C++ vs Python | 0 | 0 |
-| ℹ️ | speedup beyer_swinehart(30 modes, 1e5 grains) | 113.1 | — |
-| ℹ️ | speedup thermal_wkb_kappa(401 pts, 400 E) | 249.4 | — |
+| ℹ️ | speedup beyer_swinehart(30 modes, 1e5 grains) | 104.3 | — |
+| ℹ️ | speedup thermal_wkb_kappa(401 pts, 400 E) | 330 | — |
 
 
 

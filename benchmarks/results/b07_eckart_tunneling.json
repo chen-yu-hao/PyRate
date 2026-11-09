@@ -1,10 +1,10 @@
 {
   "provenance": {
-    "commit": "3979934ef1f49918e1521b032176158c18ffeb44",
-    "utc": "2026-11-09T06:13:58Z",
-    "python": "3.13.18",
-    "numpy": "2.5.3",
-    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
+    "commit": "913220f2c8d72db3ef0f604d7b33693249991cdd",
+    "utc": "2026-11-09T06:19:57Z",
+    "python": "3.12.16",
+    "numpy": "2.5.4",
+    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43"
   },
   "native": {
     "case": "b07_eckart_tunneling",
@@ -19,13 +19,13 @@
     "checks": [
       {
         "name": "WKB action: observed order 4001→8001 points",
-        "value": 0.6515170798875438,
+        "value": 0.6515170798776044,
         "threshold": null,
         "status": "info"
       },
       {
         "name": "WKB action rel error, 8001 points",
-        "value": 9.668905830784169e-05,
+        "value": 9.668905830850782e-05,
         "threshold": 0.0001,
         "status": "pass"
       },
@@ -55,7 +55,7 @@
       },
       {
         "name": "κ_primitive/κ_exact at 300 K (legacy form)",
-        "value": 0.9443140229241216,
+        "value": 0.9443140229241218,
         "threshold": null,
         "status": "info"
       },
@@ -92,11 +92,11 @@
         "a_m": 3.165579051092126e-11
       },
       "action_rel_error_vs_points": {
-        "501": 0.008768875576526614,
+        "501": 0.00876887557652617,
         "1001": 0.00022534829333431539,
-        "2001": 0.0011466009454252912,
+        "2001": 0.0011466009454257353,
         "4001": 0.00015188102318908214,
-        "8001": 9.668905830784169e-05
+        "8001": 9.668905830850782e-05
       },
       "kappa": {
         "200.0": {
@@ -105,8 +105,8 @@
           "bell_parabolic": null,
           "exact_eckart": 797.1755404431893,
           "uniform_semiclassical": 668.6324864874009,
-          "pyrate_wkb": 668.6315202786589,
-          "pyrate_wkb_primitive": 672.1058244519447
+          "pyrate_wkb": 668.631520278659,
+          "pyrate_wkb_primitive": 672.1058244519446
         },
         "250.0": {
           "u": 8.632661265023604,
@@ -124,7 +124,7 @@
           "exact_eckart": 12.95871589934524,
           "uniform_semiclassical": 11.059396200782382,
           "pyrate_wkb": 11.059443862671129,
-          "pyrate_wkb_primitive": 12.23709714284148
+          "pyrate_wkb_primitive": 12.237097142841483
         },
         "400.0": {
           "u": 5.395413290639752,
@@ -132,7 +132,7 @@
           "bell_parabolic": 6.281740306272262,
           "exact_eckart": 3.8718187311161403,
           "uniform_semiclassical": 3.399903688840552,
-          "pyrate_wkb": 3.399919899634233,
+          "pyrate_wkb": 3.3999198996342326,
           "pyrate_wkb_primitive": 4.160399352404768
         },
         "600.0": {
@@ -142,7 +142,7 @@
           "exact_eckart": 1.8123211794444232,
           "uniform_semiclassical": 1.6579235594185684,
           "pyrate_wkb": 1.6579285007599305,
-          "pyrate_wkb_primitive": 2.1363246914615717
+          "pyrate_wkb_primitive": 2.1363246914615712
         },
         "1000.0": {
           "u": 2.158165316255901,
@@ -166,10 +166,10 @@
           "u": 0.43163306325118017,
           "wigner": 1.0077627958871498,
           "bell_parabolic": 1.0078051867459399,
-          "exact_eckart": 1.0157962721202252,
+          "exact_eckart": 1.0157962721202254,
           "uniform_semiclassical": 1.006914815344031,
           "pyrate_wkb": 1.0069148681116782,
-          "pyrate_wkb_primitive": 1.0707528784319893
+          "pyrate_wkb_primitive": 1.070752878431989
         }
       },
       "parabolic_bell": {
@@ -206,13 +206,13 @@
     "checks": [
       {
         "name": "WKB action: observed order 4001→8001 points",
-        "value": 0.6515170798875438,
+        "value": 0.6515170798776044,
         "threshold": null,
         "status": "info"
       },
       {
         "name": "WKB action rel error, 8001 points",
-        "value": 9.668905830784169e-05,
+        "value": 9.668905830850782e-05,
         "threshold": 0.0001,
         "status": "pass"
       },
@@ -279,11 +279,11 @@
         "a_m": 3.165579051092126e-11
       },
       "action_rel_error_vs_points": {
-        "501": 0.008768875576526614,
+        "501": 0.00876887557652617,
         "1001": 0.00022534829333431539,
-        "2001": 0.0011466009454252912,
+        "2001": 0.0011466009454255133,
         "4001": 0.00015188102318908214,
-        "8001": 9.668905830784169e-05
+        "8001": 9.668905830850782e-05
       },
       "kappa": {
         "200.0": {
@@ -292,8 +292,8 @@
           "bell_parabolic": null,
           "exact_eckart": 797.1755404431893,
           "uniform_semiclassical": 668.6324864874009,
-          "pyrate_wkb": 668.6315202786589,
-          "pyrate_wkb_primitive": 672.1058244519447
+          "pyrate_wkb": 668.631520278659,
+          "pyrate_wkb_primitive": 672.1058244519448
         },
         "250.0": {
           "u": 8.632661265023604,
@@ -319,8 +319,8 @@
           "bell_parabolic": 6.281740306272262,
           "exact_eckart": 3.8718187311161403,
           "uniform_semiclassical": 3.399903688840552,
-          "pyrate_wkb": 3.399919899634233,
-          "pyrate_wkb_primitive": 4.16039935240477
+          "pyrate_wkb": 3.3999198996342326,
+          "pyrate_wkb_primitive": 4.160399352404768
         },
         "600.0": {
           "u": 3.5969421937598347,
@@ -353,10 +353,10 @@
           "u": 0.43163306325118017,
           "wigner": 1.0077627958871498,
           "bell_parabolic": 1.0078051867459399,
-          "exact_eckart": 1.0157962721202252,
+          "exact_eckart": 1.0157962721202254,
           "uniform_semiclassical": 1.006914815344031,
           "pyrate_wkb": 1.0069148681116782,
-          "pyrate_wkb_primitive": 1.0707528784319893
+          "pyrate_wkb_primitive": 1.070752878431989
         }
       },
       "parabolic_bell": {
@@ -380,5 +380,5 @@
       "version": "python-fallback-0.1"
     }
   },
-  "backend_max_rel_diff": 4.702770466914334e-16
+  "backend_max_rel_diff": 2.351385233457167e-16
 }
