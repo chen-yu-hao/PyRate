@@ -1,10 +1,10 @@
 {
   "provenance": {
-    "commit": "7063ea0c579c55e3ecf783b91b14adfb4ffcb930",
-    "utc": "2026-11-09T05:32:30Z",
-    "python": "3.13.18",
-    "numpy": "2.5.3",
-    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
+    "commit": "3979934ef1f49918e1521b032176158c18ffeb44",
+    "utc": "2026-11-09T05:51:50Z",
+    "python": "3.12.16",
+    "numpy": "2.5.4",
+    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43"
   },
   "native": {
     "case": "b06_cvt_convergence",
@@ -70,9 +70,9 @@
       "convergence": {
         "9": {
           "200.0": {
-            "s_cvt": -0.022140209915689324,
+            "s_cvt": -0.022140209915689435,
             "dG_cvt": 50.40608147325929,
-            "err_s": 0.0016555800838405077,
+            "err_s": 0.0016555800838403967,
             "err_dG": 0.014156531200541167,
             "fit_points": 5
           },

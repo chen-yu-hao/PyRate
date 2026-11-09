@@ -1,10 +1,10 @@
 {
   "provenance": {
-    "commit": "7063ea0c579c55e3ecf783b91b14adfb4ffcb930",
-    "utc": "2026-11-09T05:32:30Z",
-    "python": "3.13.18",
-    "numpy": "2.5.3",
-    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
+    "commit": "3979934ef1f49918e1521b032176158c18ffeb44",
+    "utc": "2026-11-09T05:51:50Z",
+    "python": "3.12.16",
+    "numpy": "2.5.4",
+    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43"
   },
   "native": {
     "case": "b10_native_parity",
@@ -18,20 +18,20 @@
       },
       "timings": {
         "beyer_swinehart(30 modes, 1e5 grains)": {
-          "cpp_s": 0.003504701999986537,
-          "python_s": 0.4021019440000373,
-          "speedup": 114.7321352861333
+          "cpp_s": 0.0042189069999949425,
+          "python_s": 0.40686807199999464,
+          "speedup": 96.43921328450293
         },
         "thermal_wkb_kappa(401 pts, 400 E)": {
-          "cpp_s": 0.00025512099995239623,
-          "python_s": 0.06186568300000772,
-          "speedup": 242.49545514305532
+          "cpp_s": 0.00031573799999762286,
+          "python_s": 0.07974093100000346,
+          "speedup": 252.55411448924048
         }
       },
       "max_rel_diff": {
         "harmonic_log_partition": 0.0,
         "wigner_kappa": 0.0,
-        "refine_maximum": 1.9862029400275185e-12,
+        "refine_maximum": 1.986830955291018e-12,
         "wkb_exponent": 2.3872645678321937e-16,
         "thermal_wkb_kappa": 6.443946368644027e-16,
         "beyer_swinehart": 0.0
@@ -52,7 +52,7 @@
       },
       {
         "name": "refine_maximum: max rel diff C++ vs Python",
-        "value": 1.9862029400275185e-12,
+        "value": 1.986830955291018e-12,
         "threshold": 1e-10,
         "status": "pass"
       },
@@ -76,13 +76,13 @@
       },
       {
         "name": "speedup beyer_swinehart(30 modes, 1e5 grains)",
-        "value": 114.7321352861333,
+        "value": 96.43921328450293,
         "threshold": null,
         "status": "info"
       },
       {
         "name": "speedup thermal_wkb_kappa(401 pts, 400 E)",
-        "value": 242.49545514305532,
+        "value": 252.55411448924048,
         "threshold": null,
         "status": "info"
       }

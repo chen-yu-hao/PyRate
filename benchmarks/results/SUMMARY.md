@@ -1,8 +1,8 @@
 # Paper benchmark results
 
-- commit: `7063ea0c579c55e3ecf783b91b14adfb4ffcb930`
-- run (UTC): 2026-11-09T05:32:30Z
-- Python 3.13.18, NumPy 2.5.3, Linux-6.18.44-fc-v310-x86_64-with-glibc2.39
+- commit: `3979934ef1f49918e1521b032176158c18ffeb44`
+- run (UTC): 2026-11-09T05:51:50Z
+- Python 3.12.16, NumPy 2.5.4, Linux-7.0.0-1019-azure-x86_64-with-glibc2.43
 
 **Overall: all checks passed**
 
@@ -113,12 +113,12 @@ References: Eckart, Phys. Rev. 35, 1303 (1930); Wigner, Z. Phys. Chem. B 19, 203
 |---|---|---|---|
 | ✅ | harmonic_log_partition: max rel diff C++ vs Python | 0 | 1e-12 |
 | ✅ | wigner_kappa: max rel diff C++ vs Python | 0 | 1e-12 |
-| ✅ | refine_maximum: max rel diff C++ vs Python | 1.986e-12 | 1e-10 |
+| ✅ | refine_maximum: max rel diff C++ vs Python | 1.987e-12 | 1e-10 |
 | ✅ | wkb_exponent: max rel diff C++ vs Python | 2.387e-16 | 1e-12 |
 | ✅ | thermal_wkb_kappa: max rel diff C++ vs Python | 6.444e-16 | 1e-12 |
 | ✅ | beyer_swinehart: max rel diff C++ vs Python | 0 | 0 |
-| ℹ️ | speedup beyer_swinehart(30 modes, 1e5 grains) | 114.7 | — |
-| ℹ️ | speedup thermal_wkb_kappa(401 pts, 400 E) | 242.5 | — |
+| ℹ️ | speedup beyer_swinehart(30 modes, 1e5 grains) | 96.44 | — |
+| ℹ️ | speedup thermal_wkb_kappa(401 pts, 400 E) | 252.6 | — |
 
 
 
