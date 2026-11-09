@@ -4,7 +4,7 @@
 # 本文件与 h_h2_bkmp2.inp 放在同一目录
 schema_version = 1
 job = "h_h2_bkmp2.inp"
-temperatures = ["1000 K", "1500 K"]   # force_constant 用 k/T 形式，弹簧随 T 自动保持 ≈400 kBT
+temperatures = ["300 K", "500 K"]     # force_constant = 0.1 即 k = 0.1·T，窗口宽度与 T 无关
 replicates = 2                        # 独立种子重复，用来估计种子间离散
 design = "one_at_a_time"
 relative_tolerance = 0.05
@@ -12,4 +12,4 @@ relative_tolerance = 0.05
 [convergence]
 beads = [16, 32, 64]                          # 珠子数
 timestep = ["0.1 fs", "0.05 fs"]              # 步长（所有时长必须仍为整数步）
-separation = ["10 bohr", "12 bohr", "14 bohr"] # R∞
+separation = ["30 bohr", "40 bohr"]   # R∞

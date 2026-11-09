@@ -3,8 +3,9 @@
 #
 # 语法依据：PyRPMD @ 306a482（2026-11）的 schema 2 "research layout"
 #   docs/rate-input-v2.md、examples/rate/research.inp、examples/rate/bkmp2_pilot.inp
-# 物理设置（PES、质量、鞍点、Rinf、两条等价通道、400 kBT 弹簧、47 个窗口）
-# 与官方 bkmp2_pilot.inp 一致，只是改写为 schema 2 的显式分阶段写法。
+# 物理设置按文献 RPMDrate H + H2 示例（Suleimanov, Allen, Green, CPC 184, 833 (2013)）：
+# 300 K、kforce = 0.1·T、ξ∈[-0.05,1.05] 步长 0.01（111 窗口）、R∞ = 30 bohr、两条等价通道。
+# 采样协议（Andersen/Cayley、采样时长）与文献不同，见 README。
 #
 # 使用方法：把本文件复制到 PyRPMD 源码的 examples/rate/ 目录下
 #   （factory 路径 ../../benchmarks/h3/pes.py 相对于本文件所在目录解析）
@@ -15,8 +16,8 @@
 schema_version = 2        # 2 = 显式反应定义 + 独立的 parent 采样默认值（新输入推荐）
 task = "rate"             # 气相双分子 Bennett–Chandler 速率：k = k_QTST × κ
 preset = "pilot"          # pilot 允许省略字段并使用默认值；production 要求所有关键参数显式给出
-temperature = "1500 K"    # 温度；裸数字按 K 处理
-beads = 16                # 环聚合物珠子数 P；P=1 即经典极限。必须做 P 收敛（16/32/64…）
+temperature = "300 K"     # 温度；与文献 RPMDrate H+H2 表 2 相同
+beads = 16                # 环聚合物珠子数 P；P=1 即经典极限；文献用 128。可用 --beads 覆盖
 seed = 721062             # 随机种子；各独立随机流由稳定的任务 ID 派生
 
 # ---------------------------------------------------------------------
@@ -53,7 +54,7 @@ breaking_bonds = [[1, 2]]           # 断裂的键
 equivalent_paths = [[0, 2, 1]]      # 等价通道 H0 + H1H2 -> H0H2 + H1（原子置换 0,2,1）
 symmetry_factor = 1.0               # 已用 equivalent_paths 计入两条通道，不要再额外乘 2
 electronic_weight = 1.0             # 电子配分函数比
-rinf = "10 bohr"                    # 反应物渐近区 R∞（ξ=0 处碎片质心距离）；需检查 10/12/14 bohr 的敏感性
+rinf = "30 bohr"                    # 反应物渐近区 R∞（ξ=0 处碎片质心距离）；文献示例取 30 bohr
 
 [preparation]
 ts_action = "validate"   # 只检查给定坐标是否为驻点+一阶鞍点，不移动坐标；"refine" 允许 P-RFO 精修
@@ -84,30 +85,22 @@ bins = 100                 # MBAR 直方图 bin 数
 bootstrap_replicates = 20  # PMF bootstrap 次数（20 只是短预算，不是精度目标）
 
 # ---------------------------------------------------------------------
-# 伞形窗口：ξ ∈ [-0.05, 1.10]，间距 0.025，共 47 个（与官方 bkmp2_pilot 相同）
+# 伞形窗口：文献设置 ξ ∈ [-0.05, 1.05]，间距 0.01，共 111 个
 # ---------------------------------------------------------------------
 [umbrella]
 coordinate = "xi"          # RPMDrate 反应坐标 ξ：0=反应物渐近区，1=鞍点分割面
-# force_constant 裸数字 = k/T（hartree/K，对无量纲 ξ）。实际弹簧 k = 系数 × T
-#   0.0012667246 × 1500 K = 1.900087 hartree ≈ 400 kBT，与官方 kappa="1.900086938 hartree" 相同
-#   用 k/T 形式的好处：做温度扫描时弹簧自动保持 ≈400 kBT
-#   若想固定物理弹簧，写成 force_constant = "1.900086938 hartree"
+# 文献 RPMDrate 写法 kforce = 0.1 * T。PyRPMD 的 force_constant 裸数字正是 k/T（hartree/K），
+# 所以直接写 0.1：300 K 时物理弹簧 k = 0.1 × 300 = 30 hartree（对无量纲 ξ）
+#   窗口宽度 σ = sqrt(kBT/k) ≈ 0.0056，所以间距必须约 0.01，0.025 会导致相邻窗口不重叠
 #   不要自己乘珠子数 P，程序内部处理
-force_constant = 0.0012667246
+force_constant = 0.1
 
 [[umbrella.regions]]
-id = "entrance"            # 入口区：PMF 较平缓
+id = "all"
 start = -0.05
-stop = 0.80
-spacing = 0.025            # (0.80+0.05)/0.025 = 34，必须整除，否则报错
-include_endpoints = "left" # 只含左端点，右端点 0.80 交给下一个区域，避免重复中心
-
-[[umbrella.regions]]
-id = "barrier"             # 势垒区：可按需加密或加大弹簧（可在此写 force_constant 覆盖）
-start = 0.80
-stop = 1.10
-spacing = 0.025
-include_endpoints = "both"
+stop = 1.05
+spacing = 0.01             # (1.05+0.05)/0.01 = 110，必须整除
+include_endpoints = "both" # 含两端 → 111 个窗口
 
 [umbrella.sampling]
 equilibration = "50 fs"    # 每个窗口、每条链的平衡时间（官方 pilot 值；生产需 ps 级）
