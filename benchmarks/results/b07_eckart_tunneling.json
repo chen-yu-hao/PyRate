@@ -1,0 +1,316 @@
+{
+  "provenance": {
+    "commit": "7063ea0c579c55e3ecf783b91b14adfb4ffcb930",
+    "utc": "2026-11-09T05:32:30Z",
+    "python": "3.13.18",
+    "numpy": "2.5.3",
+    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
+  },
+  "native": {
+    "case": "b07_eckart_tunneling",
+    "title": "Eckart barrier: WKB action and canonical tunneling coefficients",
+    "references": [
+      "Eckart, Phys. Rev. 35, 1303 (1930)",
+      "Wigner, Z. Phys. Chem. B 19, 203 (1932)",
+      "Bell, Trans. Faraday Soc. 55, 1 (1959)",
+      "Johnston & Heicklen, J. Phys. Chem. 66, 532 (1962)",
+      "Garrett & Truhlar, J. Phys. Chem. 83, 2921 (1979)"
+    ],
+    "checks": [
+      {
+        "name": "WKB action: observed order 4001→8001 points",
+        "value": 0.6515170798875438,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "WKB action rel error, 8001 points",
+        "value": 9.668905830784169e-05,
+        "threshold": 0.0001,
+        "status": "pass"
+      },
+      {
+        "name": "Wigner vs Bell at 5000 K (rel)",
+        "value": 4.20625527112195e-05,
+        "threshold": 0.001,
+        "status": "pass"
+      },
+      {
+        "name": "κ_PyRate/κ_exact at 300 K",
+        "value": 0.9443140229241216,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_uniform/κ_exact at 300 K",
+        "value": 0.8534330319982689,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_PyRate/κ_exact at 1000 K",
+        "value": 1.1816250034985338,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_uniform/κ_exact at 1000 K",
+        "value": 0.9496161045386601,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_PyRate/κ_exact at 2000 K",
+        "value": 1.1190935677499658,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_uniform/κ_exact at 2000 K",
+        "value": 0.9763642645643703,
+        "threshold": null,
+        "status": "info"
+      }
+    ],
+    "data": {
+      "parameters": {
+        "V0_kJ_mol": 40.0,
+        "mu_amu": 1.0,
+        "nu_imag_cm1": 1500.0,
+        "a_m": 3.165579051092126e-11
+      },
+      "action_rel_error_vs_points": {
+        "501": 0.008768875576526614,
+        "1001": 0.00022534829333431539,
+        "2001": 0.0011466009454252912,
+        "4001": 0.00015188102318908214,
+        "8001": 9.668905830784169e-05
+      },
+      "kappa": {
+        "200.0": {
+          "u": 10.790826581279504,
+          "wigner": 5.851747429468678,
+          "bell_parabolic": null,
+          "exact_eckart": 797.1755404431893,
+          "uniform_semiclassical": 668.6324864874009,
+          "pyrate_wkb": 672.1058244519447
+        },
+        "250.0": {
+          "u": 8.632661265023604,
+          "wigner": 4.105118354859954,
+          "bell_parabolic": null,
+          "exact_eckart": 51.22871841827561,
+          "uniform_semiclassical": 43.2048193666181,
+          "pyrate_wkb": 44.92944764434743
+        },
+        "300.0": {
+          "u": 7.193884387519669,
+          "wigner": 3.1563321908749677,
+          "bell_parabolic": null,
+          "exact_eckart": 12.95871589934524,
+          "uniform_semiclassical": 11.059396200782382,
+          "pyrate_wkb": 12.23709714284148
+        },
+        "400.0": {
+          "u": 5.395413290639752,
+          "wigner": 2.2129368573671693,
+          "bell_parabolic": 6.281740306272262,
+          "exact_eckart": 3.8718187311161403,
+          "uniform_semiclassical": 3.399903688840552,
+          "pyrate_wkb": 4.160399352404768
+        },
+        "600.0": {
+          "u": 3.5969421937598347,
+          "wigner": 1.539083047718742,
+          "bell_parabolic": 1.846112120037705,
+          "exact_eckart": 1.8123211794444232,
+          "uniform_semiclassical": 1.6579235594185684,
+          "pyrate_wkb": 2.1363246914615717
+        },
+        "1000.0": {
+          "u": 2.158165316255901,
+          "wigner": 1.1940698971787471,
+          "bell_parabolic": 1.2241088756292247,
+          "exact_eckart": 1.2551462665509279,
+          "uniform_semiclassical": 1.1919071082683348,
+          "pyrate_wkb": 1.4831122116044118
+        },
+        "2000.0": {
+          "u": 1.0790826581279505,
+          "wigner": 1.0485174742946868,
+          "bell_parabolic": 1.0502173675305624,
+          "exact_eckart": 1.0694714981666793,
+          "uniform_semiclassical": 1.044193752780065,
+          "pyrate_wkb": 1.1968386744902502
+        },
+        "5000.0": {
+          "u": 0.43163306325118017,
+          "wigner": 1.0077627958871498,
+          "bell_parabolic": 1.0078051867459399,
+          "exact_eckart": 1.0157962721202252,
+          "uniform_semiclassical": 1.006914815344031,
+          "pyrate_wkb": 1.0707528784319893
+        }
+      }
+    },
+    "backend": {
+      "native": true,
+      "backend": "cpp",
+      "version": "pyrate-cpp-0.1"
+    }
+  },
+  "python_fallback": {
+    "case": "b07_eckart_tunneling",
+    "title": "Eckart barrier: WKB action and canonical tunneling coefficients",
+    "references": [
+      "Eckart, Phys. Rev. 35, 1303 (1930)",
+      "Wigner, Z. Phys. Chem. B 19, 203 (1932)",
+      "Bell, Trans. Faraday Soc. 55, 1 (1959)",
+      "Johnston & Heicklen, J. Phys. Chem. 66, 532 (1962)",
+      "Garrett & Truhlar, J. Phys. Chem. 83, 2921 (1979)"
+    ],
+    "checks": [
+      {
+        "name": "WKB action: observed order 4001→8001 points",
+        "value": 0.6515170798875438,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "WKB action rel error, 8001 points",
+        "value": 9.668905830784169e-05,
+        "threshold": 0.0001,
+        "status": "pass"
+      },
+      {
+        "name": "Wigner vs Bell at 5000 K (rel)",
+        "value": 4.20625527112195e-05,
+        "threshold": 0.001,
+        "status": "pass"
+      },
+      {
+        "name": "κ_PyRate/κ_exact at 300 K",
+        "value": 0.944314022924122,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_uniform/κ_exact at 300 K",
+        "value": 0.8534330319982689,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_PyRate/κ_exact at 1000 K",
+        "value": 1.1816250034985338,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_uniform/κ_exact at 1000 K",
+        "value": 0.9496161045386601,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_PyRate/κ_exact at 2000 K",
+        "value": 1.1190935677499658,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "κ_uniform/κ_exact at 2000 K",
+        "value": 0.9763642645643703,
+        "threshold": null,
+        "status": "info"
+      }
+    ],
+    "data": {
+      "parameters": {
+        "V0_kJ_mol": 40.0,
+        "mu_amu": 1.0,
+        "nu_imag_cm1": 1500.0,
+        "a_m": 3.165579051092126e-11
+      },
+      "action_rel_error_vs_points": {
+        "501": 0.008768875576526614,
+        "1001": 0.00022534829333431539,
+        "2001": 0.0011466009454252912,
+        "4001": 0.00015188102318908214,
+        "8001": 9.668905830784169e-05
+      },
+      "kappa": {
+        "200.0": {
+          "u": 10.790826581279504,
+          "wigner": 5.851747429468678,
+          "bell_parabolic": null,
+          "exact_eckart": 797.1755404431893,
+          "uniform_semiclassical": 668.6324864874009,
+          "pyrate_wkb": 672.1058244519447
+        },
+        "250.0": {
+          "u": 8.632661265023604,
+          "wigner": 4.105118354859954,
+          "bell_parabolic": null,
+          "exact_eckart": 51.22871841827561,
+          "uniform_semiclassical": 43.2048193666181,
+          "pyrate_wkb": 44.92944764434742
+        },
+        "300.0": {
+          "u": 7.193884387519669,
+          "wigner": 3.1563321908749677,
+          "bell_parabolic": null,
+          "exact_eckart": 12.95871589934524,
+          "uniform_semiclassical": 11.059396200782382,
+          "pyrate_wkb": 12.237097142841485
+        },
+        "400.0": {
+          "u": 5.395413290639752,
+          "wigner": 2.2129368573671693,
+          "bell_parabolic": 6.281740306272262,
+          "exact_eckart": 3.8718187311161403,
+          "uniform_semiclassical": 3.399903688840552,
+          "pyrate_wkb": 4.16039935240477
+        },
+        "600.0": {
+          "u": 3.5969421937598347,
+          "wigner": 1.539083047718742,
+          "bell_parabolic": 1.846112120037705,
+          "exact_eckart": 1.8123211794444232,
+          "uniform_semiclassical": 1.6579235594185684,
+          "pyrate_wkb": 2.1363246914615712
+        },
+        "1000.0": {
+          "u": 2.158165316255901,
+          "wigner": 1.1940698971787471,
+          "bell_parabolic": 1.2241088756292247,
+          "exact_eckart": 1.2551462665509279,
+          "uniform_semiclassical": 1.1919071082683348,
+          "pyrate_wkb": 1.4831122116044118
+        },
+        "2000.0": {
+          "u": 1.0790826581279505,
+          "wigner": 1.0485174742946868,
+          "bell_parabolic": 1.0502173675305624,
+          "exact_eckart": 1.0694714981666793,
+          "uniform_semiclassical": 1.044193752780065,
+          "pyrate_wkb": 1.1968386744902502
+        },
+        "5000.0": {
+          "u": 0.43163306325118017,
+          "wigner": 1.0077627958871498,
+          "bell_parabolic": 1.0078051867459399,
+          "exact_eckart": 1.0157962721202252,
+          "uniform_semiclassical": 1.006914815344031,
+          "pyrate_wkb": 1.0707528784319893
+        }
+      }
+    },
+    "backend": {
+      "native": false,
+      "backend": "python",
+      "version": "python-fallback-0.1"
+    }
+  },
+  "backend_max_rel_diff": 4.702770466914334e-16
+}

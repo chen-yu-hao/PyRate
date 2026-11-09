@@ -1,0 +1,78 @@
+name: Paper benchmarks
+
+# Runs the self-contained scientific benchmark cases (benchmarks/) on both the
+# C++ and the Python fallback backend, then commits benchmarks/results/ back to
+# the branch that triggered the run.  Pull-request runs only report.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/**"
+      - "cpp/**"
+      - "benchmarks/**.py"
+      - "examples/**"
+      - "setup.py"
+      - "pyproject.toml"
+      - ".github/workflows/paper-benchmarks.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "cpp/**"
+      - "benchmarks/**.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-benchmarks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e .
+      - run: python -m pyrate native-info
+
+      - name: Run benchmarks (C++ and Python fallback)
+        id: run
+        continue-on-error: true
+        run: python -m benchmarks.run_all
+
+      - name: Job summary
+        if: always()
+        run: cat benchmarks/results/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paper-benchmark-results
+          path: benchmarks/results/
+
+      - name: Commit updated results
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add benchmarks/results
+          if git diff --cached --quiet; then
+            echo "No result changes."
+            exit 0
+          fi
+          git commit -m "benchmarks: update results for ${GITHUB_SHA::7} [skip ci]"
+          for i in 1 2 3 4; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((2 ** i))
+          done
+          exit 1
+
+      - name: Fail if any benchmark check failed
+        if: steps.run.outcome == 'failure'
+        run: exit 1

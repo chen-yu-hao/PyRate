@@ -1,0 +1,266 @@
+{
+  "provenance": {
+    "commit": "7063ea0c579c55e3ecf783b91b14adfb4ffcb930",
+    "utc": "2026-11-09T05:32:30Z",
+    "python": "3.13.18",
+    "numpy": "2.5.3",
+    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
+  },
+  "native": {
+    "case": "b02_water_normal_modes",
+    "title": "H2O isotopologue harmonic frequencies and Teller–Redlich product rule",
+    "references": [
+      "Hoy, Mills & Strey, Mol. Phys. 24, 1265 (1972)",
+      "Benedict, Gailar & Plyler, J. Chem. Phys. 24, 1139 (1956)",
+      "Redlich, Z. Phys. Chem. B 28, 371 (1935)"
+    ],
+    "checks": [
+      {
+        "name": "H2O: max rel diff Cartesian vs GF",
+        "value": 1.2212453270876722e-15,
+        "threshold": 1e-08,
+        "status": "pass"
+      },
+      {
+        "name": "H2O: rigid modes removed",
+        "value": 6.0,
+        "threshold": 6.0,
+        "status": "pass"
+      },
+      {
+        "name": "H2O: max |ω − ω_exp| (cm⁻¹)",
+        "value": 1.8956702634040994,
+        "threshold": 3.0,
+        "status": "pass"
+      },
+      {
+        "name": "HDO: max rel diff Cartesian vs GF",
+        "value": 6.905587213168474e-14,
+        "threshold": 1e-08,
+        "status": "pass"
+      },
+      {
+        "name": "HDO: rigid modes removed",
+        "value": 6.0,
+        "threshold": 6.0,
+        "status": "pass"
+      },
+      {
+        "name": "D2O: max rel diff Cartesian vs GF",
+        "value": 4.773959005888173e-15,
+        "threshold": 1e-08,
+        "status": "pass"
+      },
+      {
+        "name": "D2O: rigid modes removed",
+        "value": 6.0,
+        "threshold": 6.0,
+        "status": "pass"
+      },
+      {
+        "name": "D2O: max |ω − ω_exp| (cm⁻¹)",
+        "value": 1.7772033310930055,
+        "threshold": 3.0,
+        "status": "pass"
+      },
+      {
+        "name": "H2O: rotated-frame invariance (max rel)",
+        "value": 1.6491252807782075e-12,
+        "threshold": 1e-10,
+        "status": "pass"
+      },
+      {
+        "name": "Teller–Redlich H2O/D2O rel diff",
+        "value": 4.551914400963142e-15,
+        "threshold": 1e-09,
+        "status": "pass"
+      },
+      {
+        "name": "Teller–Redlich H2O/HDO rel diff",
+        "value": 9.059419880941277e-14,
+        "threshold": 1e-09,
+        "status": "pass"
+      }
+    ],
+    "data": {
+      "H2O": {
+        "cartesian_cm1": [
+          1646.604329736596,
+          3831.8904207830824,
+          3942.353302075183
+        ],
+        "gf_cm1": [
+          1646.6043297365957,
+          3831.890420783081,
+          3942.353302075188
+        ]
+      },
+      "HDO": {
+        "cartesian_cm1": [
+          1443.1195826455244,
+          2823.6807633368185,
+          3889.555004527624
+        ],
+        "gf_cm1": [
+          1443.1195826455448,
+          2823.6807633370136,
+          3889.555004527656
+        ]
+      },
+      "D2O": {
+        "cartesian_cm1": [
+          1204.622796668907,
+          2763.4853980006997,
+          2888.5988699375007
+        ],
+        "gf_cm1": [
+          1204.622796668907,
+          2763.485398000699,
+          2888.5988699375143
+        ]
+      },
+      "teller_redlich_H2O_D2O": {
+        "lhs": 0.38657842528987424,
+        "rhs": 0.386578425289876
+      },
+      "teller_redlich_H2O_HDO": {
+        "lhs": 0.6371768028846324,
+        "rhs": 0.6371768028846901
+      }
+    },
+    "backend": {
+      "native": true,
+      "backend": "cpp",
+      "version": "pyrate-cpp-0.1"
+    }
+  },
+  "python_fallback": {
+    "case": "b02_water_normal_modes",
+    "title": "H2O isotopologue harmonic frequencies and Teller–Redlich product rule",
+    "references": [
+      "Hoy, Mills & Strey, Mol. Phys. 24, 1265 (1972)",
+      "Benedict, Gailar & Plyler, J. Chem. Phys. 24, 1139 (1956)",
+      "Redlich, Z. Phys. Chem. B 28, 371 (1935)"
+    ],
+    "checks": [
+      {
+        "name": "H2O: max rel diff Cartesian vs GF",
+        "value": 1.2212453270876722e-15,
+        "threshold": 1e-08,
+        "status": "pass"
+      },
+      {
+        "name": "H2O: rigid modes removed",
+        "value": 6.0,
+        "threshold": 6.0,
+        "status": "pass"
+      },
+      {
+        "name": "H2O: max |ω − ω_exp| (cm⁻¹)",
+        "value": 1.8956702634040994,
+        "threshold": 3.0,
+        "status": "pass"
+      },
+      {
+        "name": "HDO: max rel diff Cartesian vs GF",
+        "value": 6.905587213168474e-14,
+        "threshold": 1e-08,
+        "status": "pass"
+      },
+      {
+        "name": "HDO: rigid modes removed",
+        "value": 6.0,
+        "threshold": 6.0,
+        "status": "pass"
+      },
+      {
+        "name": "D2O: max rel diff Cartesian vs GF",
+        "value": 4.773959005888173e-15,
+        "threshold": 1e-08,
+        "status": "pass"
+      },
+      {
+        "name": "D2O: rigid modes removed",
+        "value": 6.0,
+        "threshold": 6.0,
+        "status": "pass"
+      },
+      {
+        "name": "D2O: max |ω − ω_exp| (cm⁻¹)",
+        "value": 1.7772033310930055,
+        "threshold": 3.0,
+        "status": "pass"
+      },
+      {
+        "name": "H2O: rotated-frame invariance (max rel)",
+        "value": 1.6491252807782075e-12,
+        "threshold": 1e-10,
+        "status": "pass"
+      },
+      {
+        "name": "Teller–Redlich H2O/D2O rel diff",
+        "value": 4.551914400963142e-15,
+        "threshold": 1e-09,
+        "status": "pass"
+      },
+      {
+        "name": "Teller–Redlich H2O/HDO rel diff",
+        "value": 9.059419880941277e-14,
+        "threshold": 1e-09,
+        "status": "pass"
+      }
+    ],
+    "data": {
+      "H2O": {
+        "cartesian_cm1": [
+          1646.604329736596,
+          3831.8904207830824,
+          3942.353302075183
+        ],
+        "gf_cm1": [
+          1646.6043297365957,
+          3831.890420783081,
+          3942.353302075188
+        ]
+      },
+      "HDO": {
+        "cartesian_cm1": [
+          1443.1195826455244,
+          2823.6807633368185,
+          3889.555004527624
+        ],
+        "gf_cm1": [
+          1443.1195826455448,
+          2823.6807633370136,
+          3889.555004527656
+        ]
+      },
+      "D2O": {
+        "cartesian_cm1": [
+          1204.622796668907,
+          2763.4853980006997,
+          2888.5988699375007
+        ],
+        "gf_cm1": [
+          1204.622796668907,
+          2763.485398000699,
+          2888.5988699375143
+        ]
+      },
+      "teller_redlich_H2O_D2O": {
+        "lhs": 0.38657842528987424,
+        "rhs": 0.386578425289876
+      },
+      "teller_redlich_H2O_HDO": {
+        "lhs": 0.6371768028846324,
+        "rhs": 0.6371768028846901
+      }
+    },
+    "backend": {
+      "native": false,
+      "backend": "python",
+      "version": "python-fallback-0.1"
+    }
+  },
+  "backend_max_rel_diff": 0.0
+}

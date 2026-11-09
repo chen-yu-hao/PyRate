@@ -1,0 +1,130 @@
+{
+  "provenance": {
+    "commit": "7063ea0c579c55e3ecf783b91b14adfb4ffcb930",
+    "utc": "2026-11-09T05:32:30Z",
+    "python": "3.13.18",
+    "numpy": "2.5.3",
+    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
+  },
+  "native": {
+    "case": "b05_tst_consistency",
+    "title": "Conventional TST: independent formula, standard-state invariance, units",
+    "references": [
+      "Eyring, J. Chem. Phys. 3, 107 (1935)",
+      "Evans & Polanyi, Trans. Faraday Soc. 31, 875 (1935)"
+    ],
+    "checks": [
+      {
+        "name": "k_TST vs independent Eyring formula (max rel)",
+        "value": 2.2648549702353193e-14,
+        "threshold": 1e-10,
+        "status": "pass"
+      },
+      {
+        "name": "k_TST invariant to p° (1 bar vs 1 atm, max rel)",
+        "value": 5.440092820663267e-15,
+        "threshold": 1e-12,
+        "status": "pass"
+      },
+      {
+        "name": "unit conversion to cm³ molecule⁻¹ s⁻¹ (max rel)",
+        "value": 2.220446049250313e-16,
+        "threshold": 1e-14,
+        "status": "pass"
+      }
+    ],
+    "data": {
+      "200.0": {
+        "k_m3_mol_s": 0.0020884782753968646,
+        "k_cm3_molecule_s": 3.467999767240354e-21,
+        "independent": 0.0020884782753968173
+      },
+      "300.0": {
+        "k_m3_mol_s": 2.746305668698477,
+        "k_cm3_molecule_s": 4.560347853274816e-18,
+        "independent": 2.7463056686984375
+      },
+      "500.0": {
+        "k_m3_mol_s": 855.8812026017524,
+        "k_cm3_molecule_s": 1.421224173779944e-15,
+        "independent": 855.8812026017496
+      },
+      "1000.0": {
+        "k_m3_mol_s": 70238.76886909439,
+        "k_cm3_molecule_s": 1.1663421973732543e-13,
+        "independent": 70238.76886909467
+      },
+      "2000.0": {
+        "k_m3_mol_s": 754491.1440729308,
+        "k_cm3_molecule_s": 1.2528620205697928e-12,
+        "independent": 754491.144072937
+      }
+    },
+    "backend": {
+      "native": true,
+      "backend": "cpp",
+      "version": "pyrate-cpp-0.1"
+    }
+  },
+  "python_fallback": {
+    "case": "b05_tst_consistency",
+    "title": "Conventional TST: independent formula, standard-state invariance, units",
+    "references": [
+      "Eyring, J. Chem. Phys. 3, 107 (1935)",
+      "Evans & Polanyi, Trans. Faraday Soc. 31, 875 (1935)"
+    ],
+    "checks": [
+      {
+        "name": "k_TST vs independent Eyring formula (max rel)",
+        "value": 2.2648549702353193e-14,
+        "threshold": 1e-10,
+        "status": "pass"
+      },
+      {
+        "name": "k_TST invariant to p° (1 bar vs 1 atm, max rel)",
+        "value": 5.440092820663267e-15,
+        "threshold": 1e-12,
+        "status": "pass"
+      },
+      {
+        "name": "unit conversion to cm³ molecule⁻¹ s⁻¹ (max rel)",
+        "value": 2.220446049250313e-16,
+        "threshold": 1e-14,
+        "status": "pass"
+      }
+    ],
+    "data": {
+      "200.0": {
+        "k_m3_mol_s": 0.0020884782753968646,
+        "k_cm3_molecule_s": 3.467999767240354e-21,
+        "independent": 0.0020884782753968173
+      },
+      "300.0": {
+        "k_m3_mol_s": 2.746305668698477,
+        "k_cm3_molecule_s": 4.560347853274816e-18,
+        "independent": 2.7463056686984375
+      },
+      "500.0": {
+        "k_m3_mol_s": 855.8812026017524,
+        "k_cm3_molecule_s": 1.421224173779944e-15,
+        "independent": 855.8812026017496
+      },
+      "1000.0": {
+        "k_m3_mol_s": 70238.76886909439,
+        "k_cm3_molecule_s": 1.1663421973732543e-13,
+        "independent": 70238.76886909467
+      },
+      "2000.0": {
+        "k_m3_mol_s": 754491.1440729308,
+        "k_cm3_molecule_s": 1.2528620205697928e-12,
+        "independent": 754491.144072937
+      }
+    },
+    "backend": {
+      "native": false,
+      "backend": "python",
+      "version": "python-fallback-0.1"
+    }
+  },
+  "backend_max_rel_diff": 0.0
+}

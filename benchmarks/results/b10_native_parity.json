@@ -1,0 +1,96 @@
+{
+  "provenance": {
+    "commit": "7063ea0c579c55e3ecf783b91b14adfb4ffcb930",
+    "utc": "2026-11-09T05:32:30Z",
+    "python": "3.13.18",
+    "numpy": "2.5.3",
+    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
+  },
+  "native": {
+    "case": "b10_native_parity",
+    "title": "Native C++ kernels vs Python fallback",
+    "references": [],
+    "data": {
+      "backend": {
+        "native": true,
+        "backend": "cpp",
+        "version": "pyrate-cpp-0.1"
+      },
+      "timings": {
+        "beyer_swinehart(30 modes, 1e5 grains)": {
+          "cpp_s": 0.003504701999986537,
+          "python_s": 0.4021019440000373,
+          "speedup": 114.7321352861333
+        },
+        "thermal_wkb_kappa(401 pts, 400 E)": {
+          "cpp_s": 0.00025512099995239623,
+          "python_s": 0.06186568300000772,
+          "speedup": 242.49545514305532
+        }
+      },
+      "max_rel_diff": {
+        "harmonic_log_partition": 0.0,
+        "wigner_kappa": 0.0,
+        "refine_maximum": 1.9862029400275185e-12,
+        "wkb_exponent": 2.3872645678321937e-16,
+        "thermal_wkb_kappa": 6.443946368644027e-16,
+        "beyer_swinehart": 0.0
+      }
+    },
+    "checks": [
+      {
+        "name": "harmonic_log_partition: max rel diff C++ vs Python",
+        "value": 0.0,
+        "threshold": 1e-12,
+        "status": "pass"
+      },
+      {
+        "name": "wigner_kappa: max rel diff C++ vs Python",
+        "value": 0.0,
+        "threshold": 1e-12,
+        "status": "pass"
+      },
+      {
+        "name": "refine_maximum: max rel diff C++ vs Python",
+        "value": 1.9862029400275185e-12,
+        "threshold": 1e-10,
+        "status": "pass"
+      },
+      {
+        "name": "wkb_exponent: max rel diff C++ vs Python",
+        "value": 2.3872645678321937e-16,
+        "threshold": 1e-12,
+        "status": "pass"
+      },
+      {
+        "name": "thermal_wkb_kappa: max rel diff C++ vs Python",
+        "value": 6.443946368644027e-16,
+        "threshold": 1e-12,
+        "status": "pass"
+      },
+      {
+        "name": "beyer_swinehart: max rel diff C++ vs Python",
+        "value": 0.0,
+        "threshold": 0.0,
+        "status": "pass"
+      },
+      {
+        "name": "speedup beyer_swinehart(30 modes, 1e5 grains)",
+        "value": 114.7321352861333,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "speedup thermal_wkb_kappa(401 pts, 400 E)",
+        "value": 242.49545514305532,
+        "threshold": null,
+        "status": "info"
+      }
+    ],
+    "backend": {
+      "native": true,
+      "backend": "cpp",
+      "version": "pyrate-cpp-0.1"
+    }
+  }
+}

@@ -1,0 +1,230 @@
+{
+  "provenance": {
+    "commit": "7063ea0c579c55e3ecf783b91b14adfb4ffcb930",
+    "utc": "2026-11-09T05:32:30Z",
+    "python": "3.13.18",
+    "numpy": "2.5.3",
+    "platform": "Linux-6.18.44-fc-v310-x86_64-with-glibc2.39"
+  },
+  "native": {
+    "case": "b04_state_counting",
+    "title": "Beyer–Swinehart state counting",
+    "references": [
+      "Beyer & Swinehart, Commun. ACM 16, 379 (1973)",
+      "Stein & Rabinovitch, J. Chem. Phys. 58, 2438 (1973)",
+      "Whitten & Rabinovitch, J. Chem. Phys. 38, 2466 (1963)"
+    ],
+    "checks": [
+      {
+        "name": "exact enumeration: max |BS − brute force|",
+        "value": 0.0,
+        "threshold": 0.0,
+        "status": "pass"
+      },
+      {
+        "name": "Laplace rel error at 300 K, grain 1 cm⁻¹ (frequency rounding)",
+        "value": 0.0005604940189709584,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "Laplace identity with grain-rounded modes at 300 K (rel)",
+        "value": 0.0,
+        "threshold": 1e-10,
+        "status": "pass"
+      },
+      {
+        "name": "Laplace rel error at 1000 K, grain 1 cm⁻¹ (frequency rounding)",
+        "value": 0.0010203686929732836,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "Laplace identity with grain-rounded modes at 1000 K (rel)",
+        "value": 4.440892098500626e-16,
+        "threshold": 1e-10,
+        "status": "pass"
+      },
+      {
+        "name": "N_WR/N_BS at E = 5000 cm⁻¹",
+        "value": 0.9979240803859553,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "N_WR/N_BS at E = 10000 cm⁻¹",
+        "value": 0.9963736990859888,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "N_WR/N_BS at E = 20000 cm⁻¹",
+        "value": 1.0017931815162477,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "N_WR/N_BS at E = 40000 cm⁻¹",
+        "value": 1.0011891849603651,
+        "threshold": null,
+        "status": "info"
+      }
+    ],
+    "data": {
+      "laplace_rel_error_vs_grain": {
+        "300.0": {
+          "50.0": 0.02545649979048381,
+          "20.0": 0.007107468694857788,
+          "10.0": 0.006091374558474971,
+          "5.0": -0.003201111600685036,
+          "1.0": 0.0005604940189709584
+        },
+        "1000.0": {
+          "50.0": 0.023388824659719365,
+          "20.0": 0.023202515048465377,
+          "10.0": 0.008307470940196904,
+          "5.0": -0.0057552992968921135,
+          "1.0": 0.0010203686929732836
+        }
+      },
+      "whitten_rabinovitch": {
+        "5000.0": {
+          "N_BS": 948.0,
+          "N_WR": 946.0320282058856,
+          "ratio": 0.9979240803859553
+        },
+        "10000.0": {
+          "N_BS": 46190.0,
+          "N_WR": 46022.50116078182,
+          "ratio": 0.9963736990859888
+        },
+        "20000.0": {
+          "N_BS": 7367798.0,
+          "N_WR": 7381009.799189047,
+          "ratio": 1.0017931815162477
+        },
+        "40000.0": {
+          "N_BS": 3526057173.0,
+          "N_WR": 3530250307.159519,
+          "ratio": 1.0011891849603651
+        }
+      }
+    },
+    "backend": {
+      "native": true,
+      "backend": "cpp",
+      "version": "pyrate-cpp-0.1"
+    }
+  },
+  "python_fallback": {
+    "case": "b04_state_counting",
+    "title": "Beyer–Swinehart state counting",
+    "references": [
+      "Beyer & Swinehart, Commun. ACM 16, 379 (1973)",
+      "Stein & Rabinovitch, J. Chem. Phys. 58, 2438 (1973)",
+      "Whitten & Rabinovitch, J. Chem. Phys. 38, 2466 (1963)"
+    ],
+    "checks": [
+      {
+        "name": "exact enumeration: max |BS − brute force|",
+        "value": 0.0,
+        "threshold": 0.0,
+        "status": "pass"
+      },
+      {
+        "name": "Laplace rel error at 300 K, grain 1 cm⁻¹ (frequency rounding)",
+        "value": 0.0005604940189709584,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "Laplace identity with grain-rounded modes at 300 K (rel)",
+        "value": 0.0,
+        "threshold": 1e-10,
+        "status": "pass"
+      },
+      {
+        "name": "Laplace rel error at 1000 K, grain 1 cm⁻¹ (frequency rounding)",
+        "value": 0.0010203686929732836,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "Laplace identity with grain-rounded modes at 1000 K (rel)",
+        "value": 4.440892098500626e-16,
+        "threshold": 1e-10,
+        "status": "pass"
+      },
+      {
+        "name": "N_WR/N_BS at E = 5000 cm⁻¹",
+        "value": 0.9979240803859553,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "N_WR/N_BS at E = 10000 cm⁻¹",
+        "value": 0.9963736990859888,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "N_WR/N_BS at E = 20000 cm⁻¹",
+        "value": 1.0017931815162477,
+        "threshold": null,
+        "status": "info"
+      },
+      {
+        "name": "N_WR/N_BS at E = 40000 cm⁻¹",
+        "value": 1.0011891849603651,
+        "threshold": null,
+        "status": "info"
+      }
+    ],
+    "data": {
+      "laplace_rel_error_vs_grain": {
+        "300.0": {
+          "50.0": 0.02545649979048381,
+          "20.0": 0.007107468694857788,
+          "10.0": 0.006091374558474971,
+          "5.0": -0.003201111600685036,
+          "1.0": 0.0005604940189709584
+        },
+        "1000.0": {
+          "50.0": 0.023388824659719365,
+          "20.0": 0.023202515048465377,
+          "10.0": 0.008307470940196904,
+          "5.0": -0.0057552992968921135,
+          "1.0": 0.0010203686929732836
+        }
+      },
+      "whitten_rabinovitch": {
+        "5000.0": {
+          "N_BS": 948.0,
+          "N_WR": 946.0320282058856,
+          "ratio": 0.9979240803859553
+        },
+        "10000.0": {
+          "N_BS": 46190.0,
+          "N_WR": 46022.50116078182,
+          "ratio": 0.9963736990859888
+        },
+        "20000.0": {
+          "N_BS": 7367798.0,
+          "N_WR": 7381009.799189047,
+          "ratio": 1.0017931815162477
+        },
+        "40000.0": {
+          "N_BS": 3526057173.0,
+          "N_WR": 3530250307.159519,
+          "ratio": 1.0011891849603651
+        }
+      }
+    },
+    "backend": {
+      "native": false,
+      "backend": "python",
+      "version": "python-fallback-0.1"
+    }
+  },
+  "backend_max_rel_diff": 0.0
+}

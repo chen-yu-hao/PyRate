@@ -354,3 +354,19 @@ WKB 指数与闭式 2θ(E) 的相对差：E/V₀ = 0.1、0.5、0.9 时分别为 
 | 2000 | 1.08 | 1.05 | 1.05 | 1.07 | 1.20 | 1.04 |
 
 结论：低温深隧穿区，当前实现与精确值同量级，这是半经典的典型精度。u* ≲ 4 的高温区，当前实现有系统性高估，这与 κ − 1 ≈ u/2π 的分析一致。均匀半经典形式消除了这一 O(u) 偏差。
+
+## 8. 已在 GitHub Actions 中自动运行的算例
+
+`.github/workflows/paper-benchmarks.yml` 会在 `src/`、`cpp/`、`benchmarks/`、`examples/` 变更或手动触发时运行 `python -m benchmarks.run_all`。每个算例分别用 C++ 后端和 Python 回退后端各跑一次，然后把 `benchmarks/results/*.json` 和 `SUMMARY.md` 提交回触发分支。PR 上的运行只出报告，不提交。普通 CI 中的 `tests/test_paper_benchmarks.py` 也会检查这些算例没有失败项。
+
+| 算例 | 文件 | CI | 说明 |
+|---|---|---|---|
+| B2 | `benchmarks/b02_water_normal_modes.py` | ✅ | 解析 B 矩阵 Hessian，GF 对照，Teller–Redlich |
+| B3 | `benchmarks/b03_thermochemistry.py` | ✅ | JANAF S°(298.15)；H₂ + D₂ ⇌ 2HD；Urey 表值对比待摘录 |
+| B4 | `benchmarks/b04_state_counting.py` | ✅ | 枚举、Laplace 恒等式、粒度收敛、WR |
+| B5 | `benchmarks/b05_tst_consistency.py` | ✅（部分） | 独立 Eyring 公式、标准态不变性、单位；H + H₂ 文献复现待驻点数据核对 |
+| B6a | `benchmarks/b06_cvt_convergence.py` | ✅ | 人造剖面收敛阶、变分不等式 |
+| B7 | `benchmarks/b07_eckart_tunneling.py` | ✅ | 作用量误差、κ 与精确 Eckart（作为信息报告当前 WKB 的高温偏差） |
+| B10 | `benchmarks/b10_native_parity.py` | ✅ | 随机输入一致性与加速比 |
+| B1、B8 | — | 可以但未做 | 需要先摘录并核对文献数据，之后即可加入 CI |
+| B6b、B9 | — | ❌ | 依赖 Polyrate 2023 分发包（不随仓库分发），只能本地运行 |
