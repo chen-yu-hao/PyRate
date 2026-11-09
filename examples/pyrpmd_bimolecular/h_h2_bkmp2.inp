@@ -1,0 +1,150 @@
+# =====================================================================
+# PyRPMD 双分子 RPMD 速率输入：H + H2 -> H2 + H（BKMP2 势能面）
+#
+# 语法依据：PyRPMD @ 306a482（2026-11）的 schema 2 "research layout"
+#   docs/rate-input-v2.md、examples/rate/research.inp、examples/rate/bkmp2_pilot.inp
+# 物理设置（PES、质量、鞍点、Rinf、两条等价通道、400 kBT 弹簧、47 个窗口）
+# 与官方 bkmp2_pilot.inp 一致，只是改写为 schema 2 的显式分阶段写法。
+#
+# 使用方法：把本文件复制到 PyRPMD 源码的 examples/rate/ 目录下
+#   （factory 路径 ../../benchmarks/h3/pes.py 相对于本文件所在目录解析）
+#
+# 注意：这是 pilot（冒烟测试）预算，不足以给出收敛速率！
+# =====================================================================
+
+schema_version = 2        # 2 = 显式反应定义 + 独立的 parent 采样默认值（新输入推荐）
+task = "rate"             # 气相双分子 Bennett–Chandler 速率：k = k_QTST × κ
+preset = "pilot"          # pilot 允许省略字段并使用默认值；production 要求所有关键参数显式给出
+temperature = "1500 K"    # 温度；裸数字按 K 处理
+beads = 16                # 环聚合物珠子数 P；P=1 即经典极限。必须做 P 收敛（16/32/64…）
+seed = 721062             # 随机种子；各独立随机流由稳定的任务 ID 派生
+
+# ---------------------------------------------------------------------
+# 体系：三个 1H 原子，坐标为 BKMP2 共线对称一阶鞍点（相邻 H–H 距离 1.757 bohr）
+# 原子编号从 0 开始；后面所有 fragments / bonds 都用这个顺序
+# ---------------------------------------------------------------------
+[system]
+symbols = ["H", "H", "H"]
+masses_amu = [1.00782503223, 1.00782503223, 1.00782503223]  # 显式 1H 质量（amu）
+geometry_unit = "bohr"   # 内联坐标默认就是 bohr，这里显式写出更安全
+geometry = [[-1.7570000251, 0.0, 0.0],
+            [ 0.0,          0.0, 0.0],
+            [ 1.7570000251, 0.0, 0.0]]
+charge = 0
+multiplicity = 2         # H3 基态为双重态；必须与 PES 一致
+
+# ---------------------------------------------------------------------
+# 势能面：仓库自带的 BKMP2 Python 封装（需先 python benchmarks/h3/build_pes.py 编译 Fortran）
+# ---------------------------------------------------------------------
+[potential]
+provider = "python"
+factory = "../../benchmarks/h3/pes.py:build"
+
+# ---------------------------------------------------------------------
+# 反应定义（schema 2 显式写法）
+#   H0 + H1H2 -> H0H1 + H2
+# ---------------------------------------------------------------------
+[reaction]
+definition = "explicit"             # explicit：自己声明通道；"infer" 则由虚频模式+两侧下坡推断
+reactant_fragments = [[0], [1, 2]]  # 反应物碎片：H0 与 H1H2（双分子 → 两个碎片）
+product_fragments  = [[0, 1], [2]]  # 产物分区，仅用于 check_channel 的一致性检查
+forming_bonds  = [[0, 1]]           # 形成的键
+breaking_bonds = [[1, 2]]           # 断裂的键
+equivalent_paths = [[0, 2, 1]]      # 等价通道 H0 + H1H2 -> H0H2 + H1（原子置换 0,2,1）
+symmetry_factor = 1.0               # 已用 equivalent_paths 计入两条通道，不要再额外乘 2
+electronic_weight = 1.0             # 电子配分函数比
+rinf = "10 bohr"                    # 反应物渐近区 R∞（ξ=0 处碎片质心距离）；需检查 10/12/14 bohr 的敏感性
+
+[preparation]
+ts_action = "validate"   # 只检查给定坐标是否为驻点+一阶鞍点，不移动坐标；"refine" 允许 P-RFO 精修
+check_channel = true     # 沿虚频两侧下坡，核对是否与上面声明的反应物/产物一致
+
+# ---------------------------------------------------------------------
+# 动力学（全局）：同时用于伞形采样和 recrossing 子轨迹
+# ---------------------------------------------------------------------
+[dynamics]
+integrator = "cayley-bcb"  # 默认的 Cayley/BCOCB 积分器，大 P 时稳定
+timestep = "0.1 fs"        # 必须做 0.1 / 0.05 / 0.025 fs 的步长检查
+native = "required"        # 要求使用 C++ 内核；未编译时直接报错而不是悄悄回退
+
+# ---------------------------------------------------------------------
+# 速率与 PMF 估计器
+# ---------------------------------------------------------------------
+[rate]
+pmf_points = 401           # UI 积分网格点数（不是窗口数）
+# 不写 dividing_surface：自动取受支持 PMF 的最大值处作为 ξ*
+# 若写 dividing_surface = 1.0 则固定分割面在鞍点
+
+[rate.pmf]
+method = "umbrella"        # 伞形采样产生 PMF
+estimator = "mbar"         # "mbar" 或 "ui"（Gaussian umbrella integration）
+
+[rate.pmf.analysis]
+bins = 100                 # MBAR 直方图 bin 数
+bootstrap_replicates = 20  # PMF bootstrap 次数（20 只是短预算，不是精度目标）
+
+# ---------------------------------------------------------------------
+# 伞形窗口：ξ ∈ [-0.05, 1.10]，间距 0.025，共 47 个（与官方 bkmp2_pilot 相同）
+# ---------------------------------------------------------------------
+[umbrella]
+coordinate = "xi"          # RPMDrate 反应坐标 ξ：0=反应物渐近区，1=鞍点分割面
+# force_constant 裸数字 = k/T（hartree/K，对无量纲 ξ）。实际弹簧 k = 系数 × T
+#   0.0012667246 × 1500 K = 1.900087 hartree ≈ 400 kBT，与官方 kappa="1.900086938 hartree" 相同
+#   用 k/T 形式的好处：做温度扫描时弹簧自动保持 ≈400 kBT
+#   若想固定物理弹簧，写成 force_constant = "1.900086938 hartree"
+#   不要自己乘珠子数 P，程序内部处理
+force_constant = 0.0012667246
+
+[[umbrella.regions]]
+id = "entrance"            # 入口区：PMF 较平缓
+start = -0.05
+stop = 0.80
+spacing = 0.025            # (0.80+0.05)/0.025 = 34，必须整除，否则报错
+include_endpoints = "left" # 只含左端点，右端点 0.80 交给下一个区域，避免重复中心
+
+[[umbrella.regions]]
+id = "barrier"             # 势垒区：可按需加密或加大弹簧（可在此写 force_constant 覆盖）
+start = 0.80
+stop = 1.10
+spacing = 0.025
+include_endpoints = "both"
+
+[umbrella.sampling]
+equilibration = "50 fs"    # 每个窗口、每条链的平衡时间（官方 pilot 值；生产需 ps 级）
+production = "200 fs"      # 每个窗口、每条链的采样时间
+sample_every = "0.5 fs"    # 每 0.5 fs 记录一次 ξ（=5 步）
+chains_per_window = 2      # 每个窗口的独立随机流数
+
+[umbrella.sampling.thermostat]
+type = "andersen"
+scheme = "global_refresh"
+schedule = "fixed"
+refresh_every = "2 fs"     # 每 2 fs（20 步）重抽整个环的动量，等价于官方 andersen_interval = 20
+
+# ---------------------------------------------------------------------
+# 透射系数 κ：约束在 ξ* 上的 parent 链 + 成对 ±p 子轨迹
+# ---------------------------------------------------------------------
+[recrossing.parent]
+chains = 2                     # 独立约束 parent 链数
+equilibration = "50 fs"        # parent 链平衡
+draw_every = "5 fs"            # 每 5 fs 抽一个构型作为子轨迹起点
+configurations_per_chain = 8   # 每条链抽 8 个构型 → 共 16 个 parent 构型
+
+[recrossing.parent.thermostat]
+type = "andersen"              # parent 只支持 andersen；schema 2 不继承伞形采样的恒温器
+schedule = "fixed"
+refresh_every = "2 fs"
+
+[recrossing.children]
+method = "rpmd"                # 无恒温、无偏置的标准 RPMD 子轨迹；"trpmd" 需显式选择
+pairs_per_configuration = 2    # 每个构型 2 对 (+p, -p) → 共 64 条轨迹
+duration = "30 fs"             # 子轨迹长度；κ(t) 必须在此时间内出现平台
+
+[recrossing.analysis]
+bootstrap_replicates = 30
+plateau_fraction = 0.25        # 用最后 25% 时间判断平台
+plateau_tolerance = 0.1        # 平台漂移容差
+
+[output]
+directory = "runs/h_h2_bkmp2"  # 相对于本文件目录
+checkpoint_interval = "20 fs"

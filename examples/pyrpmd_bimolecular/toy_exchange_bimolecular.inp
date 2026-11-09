@@ -1,0 +1,110 @@
+# =====================================================================
+# PyRPMD 双分子速率 —— 无需 Fortran 的快速可运行版本
+# A + BC -> AB + C，使用仓库自带的解析"教学势" examples/rate/toy_exchange.py
+#
+# ⚠ toy_exchange 不是 H3 势能面，结果没有物理意义，只用于：
+#   - 验证安装与输入语法；
+#   - 在几分钟内比较不同参数（珠子数、弹簧、估计器、采样长度）对输出的影响。
+#
+# 使用：复制到 PyRPMD 的 examples/rate/（需要同目录的 ts.xyz 与 toy_exchange.py）
+#   pyrpmd validate toy_exchange_bimolecular.inp --check-pes
+#   pyrpmd run      toy_exchange_bimolecular.inp --output runs/toy-P4
+#   pyrpmd run      toy_exchange_bimolecular.inp --beads 8 --output runs/toy-P8
+# =====================================================================
+
+schema_version = 2
+task = "rate"
+preset = "pilot"
+temperature = "1000 K"
+beads = 4                     # 可用命令行 --beads 覆盖
+seed = 612
+
+[system]
+transition_state = "ts.xyz"   # XYZ 文件默认单位 Å；三原子线性鞍点
+
+[potential]
+provider = "python"
+factory = "toy_exchange.py:build"   # 文件:工厂函数，相对本文件目录
+
+[reaction]
+definition = "explicit"
+reactant_fragments = [[0], [1, 2]]  # A + BC
+product_fragments  = [[0, 1], [2]]  # AB + C
+forming_bonds  = [[0, 1]]
+breaking_bonds = [[1, 2]]
+rinf = "5 angstrom"                 # 反应物渐近距离
+
+[preparation]
+ts_action = "validate"
+check_channel = true
+
+[dynamics]
+integrator = "cayley-bcb"
+timestep = "0.1 fs"
+
+[rate]
+dividing_surface = 1.0     # 固定 ξ* = 1（鞍点）；删除本行则自动取 PMF 最大值
+pmf_points = 401
+
+[rate.pmf]
+method = "umbrella"
+estimator = "ui"           # 比较项：改为 "mbar"
+
+[umbrella]
+coordinate = "xi"
+force_constant = 0.00016   # k/T：0.00016 × 1000 K = 0.16 hartree
+
+[[umbrella.regions]]
+id = "entrance"
+start = 0.0
+stop = 0.8
+spacing = 0.05
+include_endpoints = "left"     # 0.00 … 0.75，16 个窗口
+
+[[umbrella.regions]]
+id = "barrier"
+start = 0.8
+stop = 1.05
+spacing = 0.01
+include_endpoints = "both"     # 0.80 … 1.05，26 个窗口
+force_constant = 0.00032       # 势垒区弹簧加倍（0.32 hartree）
+
+[umbrella.sampling]
+equilibration = "5 fs"
+production = "20 fs"           # 比较项：加长到 "100 fs" 看 PMF 势垒是否漂移
+sample_every = "0.2 fs"
+chains_per_window = 1
+
+[umbrella.sampling.thermostat]
+type = "andersen"
+scheme = "global_refresh"
+schedule = "fixed"
+refresh_every = "2 fs"
+
+[rate.pmf.analysis]
+bins = 50
+bootstrap_replicates = 10
+
+[recrossing.parent]
+chains = 2
+equilibration = "5 fs"
+draw_every = "1 fs"
+configurations_per_chain = 4
+
+[recrossing.parent.thermostat]
+type = "andersen"
+scheme = "global_refresh"
+schedule = "fixed"
+refresh_every = "2 fs"
+
+[recrossing.children]
+method = "rpmd"
+pairs_per_configuration = 2
+duration = "10 fs"
+
+[recrossing.analysis]
+bootstrap_replicates = 30
+
+[output]
+directory = "runs/toy-bimolecular"
+checkpoint_interval = "5 fs"

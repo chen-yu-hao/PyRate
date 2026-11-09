@@ -1,0 +1,15 @@
+# pyrpmd study 收敛扫描：一次只改一个参数（one_at_a_time），其余取最精细值
+#   pyrpmd study h_h2_convergence_study.toml --plan          # 只列出算例，不跑动力学
+#   pyrpmd study h_h2_convergence_study.toml --output runs/h_h2_study
+# 本文件与 h_h2_bkmp2.inp 放在同一目录
+schema_version = 1
+job = "h_h2_bkmp2.inp"
+temperatures = ["1000 K", "1500 K"]   # force_constant 用 k/T 形式，弹簧随 T 自动保持 ≈400 kBT
+replicates = 2                        # 独立种子重复，用来估计种子间离散
+design = "one_at_a_time"
+relative_tolerance = 0.05
+
+[convergence]
+beads = [16, 32, 64]                          # 珠子数
+timestep = ["0.1 fs", "0.05 fs"]              # 步长（所有时长必须仍为整数步）
+separation = ["10 bohr", "12 bohr", "14 bohr"] # R∞
