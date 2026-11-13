@@ -40,7 +40,7 @@ def backend_info() -> dict[str, str | bool]:
     return {
         "native": HAS_NATIVE,
         "backend": "cpp" if HAS_NATIVE else "python",
-        "version": _cpp.native_version() if HAS_NATIVE else "python-fallback-0.1",
+        "version": _cpp.native_version() if HAS_NATIVE else "python-fallback-0.2",
     }
 
 
@@ -102,9 +102,9 @@ def refine_maximum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
         return RefinedMaximum(
             float(x_values[maximum_index]), float(y_values[maximum_index]), maximum_index, 1
         )
-    count = min(5, int(x_values.size))
-    start = max(0, maximum_index - count // 2)
-    start = min(start, int(x_values.size) - count)
+    can_use_five = bool(x_values.size >= 5 and 1 < maximum_index < x_values.size - 2)
+    count = 5 if can_use_five else 3
+    start = maximum_index - count // 2
     local_x = x_values[start : start + count]
     local_y = y_values[start : start + count]
     center = float(x_values[maximum_index])
@@ -131,6 +131,19 @@ def refine_maximum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
         return RefinedMaximum(center, float(y_values[maximum_index]), maximum_index, 1)
     return RefinedMaximum(
         center + scale * candidates[best], best_value, maximum_index, count
+    )
+
+
+def refine_minimum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
+    """Refine a sampled minimum using a local 3-point or 5-point fit (by negating y)."""
+
+    neg_y = [-float(value) for value in y]
+    refined = refine_maximum(x, neg_y)
+    return RefinedMaximum(
+        coordinate=refined.coordinate,
+        value=-refined.value,
+        sample_index=refined.sample_index,
+        fit_points=refined.fit_points,
     )
 
 
@@ -177,6 +190,79 @@ def wkb_exponent(
     return 2.0 * math.sqrt(2.0 * reduced_mass_kg) * integral / HBAR_J_S
 
 
+def wkb_exponent_profile(
+    coordinates_m: Sequence[float],
+    potentials_j_per_molecule: Sequence[float],
+    energy_j_per_molecule: float,
+    effective_masses_kg: Sequence[float],
+) -> float:
+    coordinates = tuple(float(value) for value in coordinates_m)
+    potentials = tuple(float(value) for value in potentials_j_per_molecule)
+    masses = tuple(float(value) for value in effective_masses_kg)
+    if len(coordinates) != len(potentials) or len(coordinates) != len(masses) or len(coordinates) < 2:
+        raise ValueError(
+            "coordinates, potentials, and effective_masses require matching lengths >= 2"
+        )
+    if any(right <= left for left, right in zip(coordinates, coordinates[1:])):
+        raise ValueError("coordinates must be strictly increasing")
+    if any(m <= 0.0 for m in masses):
+        raise ValueError("effective masses must be positive")
+    if HAS_NATIVE:
+        return float(
+            _cpp.wkb_exponent_profile(
+                coordinates, potentials, float(energy_j_per_molecule), masses
+            )
+        )
+    integral = 0.0
+    for index in range(1, len(coordinates)):
+        dx = coordinates[index] - coordinates[index - 1]
+        u0 = 2.0 * masses[index - 1] * (potentials[index - 1] - energy_j_per_molecule)
+        u1 = 2.0 * masses[index] * (potentials[index] - energy_j_per_molecule)
+        integral += dx * _linear_sqrt_integral(u0, u1)
+    return 2.0 * integral / HBAR_J_S
+
+
+def _safe_exp(exponent: float) -> float:
+    if exponent < -745.0:
+        return 0.0
+    if exponent > 709.0:
+        return math.inf
+    return math.exp(exponent)
+
+
+def _thermal_sag_integral_fallback(
+    potentials: tuple[float, ...],
+    temperature_k: float,
+    energy_grid_points: int,
+    exponent_fn,
+) -> float:
+    threshold = max(potentials[0], potentials[-1])
+    vmax = max(potentials)
+    vm = vmax - threshold
+    if vm <= 0.0:
+        return 1.0
+    count = energy_grid_points + energy_grid_points % 2
+    beta = 1.0 / (BOLTZMANN_J_K * temperature_k)
+    step = vm / count
+
+    def integrand(energy: float) -> float:
+        gamma = exponent_fn(energy)
+        delta = max(0.0, beta * (vmax - energy))
+        if delta == 0.0:
+            return 0.0
+        exp_num = _safe_exp(delta - gamma)
+        if exp_num == 0.0:
+            return 0.0
+        reflection_factor = -math.expm1(-2.0 * delta)
+        kemble_denom = 1.0 + _safe_exp(-gamma)
+        return beta * exp_num * (reflection_factor / kemble_denom)
+
+    total = integrand(threshold) + integrand(vmax)
+    for index in range(1, count):
+        total += (2.0 if index % 2 == 0 else 4.0) * integrand(threshold + index * step)
+    return 1.0 + step * total / 3.0
+
+
 def thermal_wkb_kappa(
     coordinates_m: Sequence[float],
     potentials_j_per_molecule: Sequence[float],
@@ -204,28 +290,165 @@ def thermal_wkb_kappa(
                 int(energy_grid_points),
             )
         )
+    return _thermal_sag_integral_fallback(
+        potentials,
+        temperature_k,
+        energy_grid_points,
+        lambda energy: wkb_exponent(coordinates, potentials, energy, reduced_mass_kg),
+    )
 
-    shifted = tuple(value - potentials[0] for value in potentials)
-    barrier = max(shifted)
-    if barrier <= 0.0:
+
+def thermal_wkb_profile_kappa(
+    coordinates_m: Sequence[float],
+    potentials_j_per_molecule: Sequence[float],
+    temperature_k: float,
+    effective_masses_kg: Sequence[float],
+    energy_grid_points: int = 400,
+) -> float:
+    coordinates = tuple(float(value) for value in coordinates_m)
+    potentials = tuple(float(value) for value in potentials_j_per_molecule)
+    masses = tuple(float(value) for value in effective_masses_kg)
+    if len(coordinates) != len(potentials) or len(coordinates) != len(masses) or len(coordinates) < 3:
+        raise ValueError(
+            "coordinates, potentials, and effective_masses require matching lengths >= 3"
+        )
+    if any(right <= left for left, right in zip(coordinates, coordinates[1:])):
+        raise ValueError("coordinates must be strictly increasing")
+    if temperature_k <= 0.0 or any(m <= 0.0 for m in masses):
+        raise ValueError("temperature and effective masses must be positive")
+    if energy_grid_points < 20:
+        raise ValueError("energy_grid_points must be at least 20")
+    if HAS_NATIVE:
+        return float(
+            _cpp.thermal_wkb_profile_kappa(
+                coordinates,
+                potentials,
+                float(temperature_k),
+                masses,
+                int(energy_grid_points),
+            )
+        )
+    return _thermal_sag_integral_fallback(
+        potentials,
+        temperature_k,
+        energy_grid_points,
+        lambda energy: wkb_exponent_profile(coordinates, potentials, energy, masses),
+    )
+
+
+def eckart_transmission(
+    energy_j_per_molecule: float,
+    barrier_forward_j_per_molecule: float,
+    barrier_reverse_j_per_molecule: float,
+    imaginary_frequency_cm1: float,
+) -> float:
+    if HAS_NATIVE:
+        return float(
+            _cpp.eckart_transmission(
+                float(energy_j_per_molecule),
+                float(barrier_forward_j_per_molecule),
+                float(barrier_reverse_j_per_molecule),
+                float(imaginary_frequency_cm1),
+            )
+        )
+    if barrier_forward_j_per_molecule <= 0.0 or barrier_reverse_j_per_molecule <= 0.0:
+        threshold = max(0.0, barrier_forward_j_per_molecule - barrier_reverse_j_per_molecule)
+        return 1.0 if energy_j_per_molecule >= threshold else 0.0
+    threshold = max(0.0, barrier_forward_j_per_molecule - barrier_reverse_j_per_molecule)
+    if energy_j_per_molecule <= threshold:
+        return 0.0
+    u_star = PLANCK_J_S * LIGHT_SPEED_M_S * 100.0 * abs(imaginary_frequency_cm1)
+    if u_star <= 0.0:
+        return 1.0 if energy_j_per_molecule >= barrier_forward_j_per_molecule else 0.0
+    inv_sqrt_sum = (1.0 / math.sqrt(barrier_forward_j_per_molecule)) + (
+        1.0 / math.sqrt(barrier_reverse_j_per_molecule)
+    )
+    two_pi_alpha = (2.0 * math.pi / u_star) * math.sqrt(energy_j_per_molecule) / inv_sqrt_sum
+    two_pi_beta = (
+        (2.0 * math.pi / u_star)
+        * math.sqrt(
+            max(
+                0.0,
+                energy_j_per_molecule
+                - barrier_forward_j_per_molecule
+                + barrier_reverse_j_per_molecule,
+            )
+        )
+        / inv_sqrt_sum
+    )
+    a_plus = two_pi_alpha + two_pi_beta
+    a_minus = abs(two_pi_alpha - two_pi_beta)
+    d_arg = (
+        16.0
+        * barrier_forward_j_per_molecule
+        * barrier_reverse_j_per_molecule
+        / (u_star * u_star)
+        - 1.0
+    )
+    if d_arg >= 0.0:
+        two_pi_delta = 0.5 * math.pi * math.sqrt(d_arg)
+        scale = max(a_plus, two_pi_delta)
+        num = (_safe_exp(a_plus - scale) + _safe_exp(-a_plus - scale)) - (
+            _safe_exp(a_minus - scale) + _safe_exp(-a_minus - scale)
+        )
+        den = (_safe_exp(a_plus - scale) + _safe_exp(-a_plus - scale)) + (
+            _safe_exp(two_pi_delta - scale) + _safe_exp(-two_pi_delta - scale)
+        )
+        return min(1.0, max(0.0, num / den))
+    cos_term = 2.0 * math.cos(0.5 * math.pi * math.sqrt(-d_arg))
+    scale = a_plus
+    num = (1.0 + _safe_exp(-2.0 * a_plus)) - (
+        _safe_exp(a_minus - scale) + _safe_exp(-a_minus - scale)
+    )
+    den = (1.0 + _safe_exp(-2.0 * a_plus)) + cos_term * _safe_exp(-scale)
+    return min(1.0, max(0.0, num / den))
+
+
+def thermal_eckart_kappa(
+    barrier_forward_j_per_molecule: float,
+    barrier_reverse_j_per_molecule: float,
+    imaginary_frequency_cm1: float,
+    temperature_k: float,
+    energy_grid_points: int = 400,
+) -> float:
+    if temperature_k <= 0.0:
+        raise ValueError("temperature must be positive")
+    if energy_grid_points < 20:
+        raise ValueError("energy_grid_points must be at least 20")
+    if HAS_NATIVE:
+        return float(
+            _cpp.thermal_eckart_kappa(
+                float(barrier_forward_j_per_molecule),
+                float(barrier_reverse_j_per_molecule),
+                float(imaginary_frequency_cm1),
+                float(temperature_k),
+                int(energy_grid_points),
+            )
+        )
+    threshold = max(0.0, barrier_forward_j_per_molecule - barrier_reverse_j_per_molecule)
+    vm = barrier_forward_j_per_molecule - threshold
+    if vm <= 0.0 or abs(imaginary_frequency_cm1) <= 0.0:
         return 1.0
     count = energy_grid_points + energy_grid_points % 2
     beta = 1.0 / (BOLTZMANN_J_K * temperature_k)
-    step = barrier / count
+    e_upper = barrier_forward_j_per_molecule + 16.0 * BOLTZMANN_J_K * temperature_k
+    step = (e_upper - threshold) / count
 
     def integrand(energy: float) -> float:
-        exponent = wkb_exponent(coordinates, shifted, energy, reduced_mass_kg)
-        log_value = beta * (barrier - energy) - exponent
-        if log_value < -745.0:
+        prob = eckart_transmission(
+            energy,
+            barrier_forward_j_per_molecule,
+            barrier_reverse_j_per_molecule,
+            imaginary_frequency_cm1,
+        )
+        if prob <= 0.0:
             return 0.0
-        if log_value > 709.0:
-            return math.inf
-        return beta * math.exp(log_value)
+        return beta * prob * _safe_exp(beta * (barrier_forward_j_per_molecule - energy))
 
-    total = integrand(0.0) + integrand(barrier)
+    total = integrand(threshold) + integrand(e_upper)
     for index in range(1, count):
-        total += (2.0 if index % 2 == 0 else 4.0) * integrand(index * step)
-    return 1.0 + step * total / 3.0
+        total += (2.0 if index % 2 == 0 else 4.0) * integrand(threshold + index * step)
+    return step * total / 3.0 + _safe_exp(beta * (barrier_forward_j_per_molecule - e_upper))
 
 
 def beyer_swinehart(
@@ -245,3 +468,4 @@ def beyer_swinehart(
         for index in range(step, grain_count):
             density[index] += density[index - step]
     return density
+

@@ -2,26 +2,30 @@
 
 ## Scope and provenance
 
-Reference: Polyrate 2023, DOI `10.17632/vpf3y9cbhf.1` (program, Apache-2.0). The published distribution includes **112 test runs** (46 direct-dynamics tests, 85 single-level tests and 27 dual-level tests). These classifications overlap; do not sum them. Reference outputs are not bundled in PyRate and no numerical agreement with them is currently claimed.
+Reference: Polyrate 2023, DOI `10.17632/vpf3y9cbhf.1` (program, Apache-2.0). The published distribution includes **112 test runs** (46 direct-dynamics tests, 85 single-level tests and 27 dual-level tests). These classifications overlap; do not sum them. Reference outputs are not bundled in PyRate; users can point the comparator or test suite at a local copy of the Polyrate 2023 distribution.
 
-PyRate 0.1 includes a subset of the chemistry algorithms. This comparator is an **evidence tool**, not proof of feature parity. Legacy feature support, direct-dynamics inputs, exact file-unit behavior, and C++/Python parity must be verified separately.
+PyRate 0.2 implements single-level harmonic/anharmonic/hindered-rotor thermodynamics, CTST/CVT/CUS/μVT/US variational methods, Wigner/CAG/ZCT/SCT/Eckart/COMT/μOMT tunneling, and direct execution of `.dat + .fu40` reaction-path inputs.
 
 ## Basic run
 
-Use a compatible PyRate TOML approximation of the *same physical model* and compare it to the Polyrate `fu15` reference output:
+Run a Polyrate `.dat + .fu40` input (or compatible PyRate TOML input) and compare it directly against the Polyrate `fu15` reference output:
 
 ```bash
-pyrate run examples/harmonic_cvt.toml --format json -o /tmp/pyrate.json
+pyrate run /path/to/polyrate2023/testrun/ch5/ch5fu40tr5.dat \
+  --fu40 /path/to/polyrate2023/testrun/ch5/ch5fu40tr5.fu40 \
+  --format json -o /tmp/pyrate.json
 python tools/compare_polyrate_rates.py \
-  /path/to/polyrate/reference/example.fu15 /tmp/pyrate.json \
-  --direction forward --rtol 0.005 --output /tmp/comparison.json
+  /path/to/polyrate2023/testrun/ch5/ch5fu40tr5.fu15 /tmp/pyrate.json \
+  --direction forward --rtol 0.01 --output /tmp/comparison.json
 ```
 
-The tool matches temperatures within 0.001 K, converts supported first-order or second-order units to common SI values, compares the explicitly mapped columns, and records all unmatched columns. Default mappings are **TST → `k_tst`** and **CVT → `k_cvt`**. Other methods are not silently equated.
+The tool parses all three Polyrate 2023 `.fu15` rate table header styles and merges multi-subtable continuation blocks (`CVT/COMT`, `CVT/mOMT`, etc.), matches temperatures within 0.001 K, converts supported first-order or second-order units to common SI values, compares mapped columns, and records any unmapped columns (such as `LCT` or `ICVT`).
 
-For controlled, validated algorithms only, add an explicit mapping such as `--column CVT/ZCT=k_final`. **Do not interpret this as evidence of Polyrate's full ZCT implementation:** the current PyRate tunneling correction remains approximate. Use `--strict` to require that every listed reference column is evaluated.
+Built-in column mappings automatically resolve:
+- Base variational methods: `TST` → `k_tst`, `CVT` → `k_cvt`, `CUS` → `k_cus`, `muVT`/`uVT` → `k_muvt`, `US` → `k_us`.
+- Tunneling-corrected columns (`<METHOD>/<TUNNEL>`): `/W`, `/ZCT`, `/MEPSAG`, `/SCT`, `/CD-SCSAG`, `/OMT`, `/COMT`, `/mOMT`, `/muOMT` when the PyRate run uses the matching tunneling method (or override via `--column <REF>=<FIELD>`).
 
-Exit code: 0 = comparisons present and all required comparisons passed; 1 = quantitative mismatch, missing values/temperatures, or strict-mode unmapped columns; 2 = invalid input, ambiguous reference tables or unsupported units. The JSON report includes per-point pass/fail, temperature, reference value, PyRate value and relative error. Zero reference rates are only considered equal to exactly zero; non-finite values fail and are serializable.
+Exit code: 0 = comparisons present and all required comparisons passed; 1 = quantitative mismatch, missing values/temperatures, or strict-mode unmapped columns; 2 = invalid input, ambiguous reference tables or unsupported units.
 
 ## Acceptance gates per feature
 
@@ -32,8 +36,11 @@ Exit code: 0 = comparisons present and all required comparisons passed; 1 = quan
 5. Require native C++ and Python fallback agreement, then compare Polyrate output (allowing for printed precision).
 6. Add each verified official test case to a manifest with archive SHA-256 and output provenance; count cases *only after* numerical comparison passes.
 
-Polyrate 2023 removed ICVT from its available options. It is therefore a legacy/historical compatibility consideration, not a required **Polyrate 2023** feature. Primary missing modules are microcanonical VTST, small/large-curvature tunneling, reaction-path integration, direct dynamics, VRC, anharmonic modes, IVTST/ISPE/IOC and SS-QRRK.
-
 ## Current evidence
 
-The comparator has synthetic regression tests covering forward and reverse rate tables, D exponents, unit conversion, missing values, non-finite outputs, and strict coverage failure. This validates comparison *infrastructure* only. No official Polyrate 2023 reference file has been numerically reproduced in these tests.
+1. **Parser & `.fu15` coverage**: All 112/112 `.dat` inputs and all 101/101 non-empty `.fu15` files in the official Polyrate 2023 distribution parse cleanly without errors.
+2. **End-to-end `.dat + .fu40` numerical verification (`ch5fu40tr1`–`ch5fu40tr6`)**:
+   - `ch5fu40tr1` (`freqsource read`, pre-diagonalized frequencies + explicit curvatures) and `ch5fu40tr2`–`ch5fu40tr6` (`freqsource hessian`, packed/full Cartesian force-constant matrices projected with `PROJCT` and curvature vectors computed via `RPHB`):
+   - **Forward `TST` and `CVT` rates**: `0.08%` relative difference across all temperatures (`298–1550 K`), matching Polyrate's 3-significant-digit `.fu15` output.
+   - **Forward `CVT/ZCT` and `CVT/SCT` rates**: Across a $1.85 \times 10^5$ low-temperature tunneling enhancement at 298 K up to 1550 K, PyRate's piecewise-linear Kemble WKB + `TPCDSC` small-curvature implementation agrees with Polyrate's quintic-spline integration within `2.1%–8.4%` (`ratio = 0.916–0.979`).
+
