@@ -36,10 +36,26 @@ _BLOCK_KEYWORDS = {
     "FREQUENCIES",
     "MOMENT",
     "MOMENTS",
+    "IFREQ",
+    "HESSIAN",
+    "GRADS",
+    "FORCES",
+    "GRADSB1",
+    "GRADSB2",
+    "FORCESB1",
+    "FORCESB2",
+    "BFS",
+    "3RDDERIV",
+    "4THDERIV",
+    "SCTOPT",
+    "EACT",
 }
 
 _SUPPORTED_SECTIONS = {
     "GENERAL",
+    "ENERGETICS",
+    "SECOND",
+    "OPTIMIZATION",
     "REACT1",
     "REACT2",
     "PROD1",
@@ -48,6 +64,13 @@ _SUPPORTED_SECTIONS = {
     "PATH",
     "TUNNEL",
     "RATE",
+    "GEN40",
+    "R140",
+    "R240",
+    "P140",
+    "P240",
+    "SADDLE40",
+    "POINT40",
 }
 
 
@@ -184,16 +207,18 @@ class LegacyInput:
         unsupported_methods = [
             method
             for method in self.requested_methods()
-            if method in {"ICVT", "MUVT", "CUS", "US", "SCT", "LCT", "LCG3", "LCG4"}
+            if method in {"ICVT", "LCT", "LCG3", "LCG4"}
         ]
         if unsupported_methods:
             warnings.append(
                 "requested methods not implemented in the current solver: "
                 + ", ".join(unsupported_methods)
             )
-        if self.section("RATE") is None:
+        if "SCT" in self.requested_methods() and not self.section_all("POINT40"):
+            warnings.append("SCT requires reaction-path curvature or unit40 path data")
+        if self.section("RATE") is None and self.section("GEN40") is None:
             warnings.append("no *RATE section")
-        if not self.temperatures_k:
+        if not self.temperatures_k and self.section("GEN40") is None:
             warnings.append("no temperature grid found in *RATE/TEMP")
         return tuple(warnings)
 

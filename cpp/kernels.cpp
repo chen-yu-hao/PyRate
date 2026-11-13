@@ -13,7 +13,8 @@ namespace {
 
 constexpr double kBoltzmann = 1.380649e-23;
 constexpr double kPlanck = 6.62607015e-34;
-constexpr double kHbar = kPlanck / (2.0 * 3.141592653589793238462643383279502884);
+constexpr double kPi = 3.141592653589793238462643383279502884;
+constexpr double kHbar = kPlanck / (2.0 * kPi);
 constexpr double kLightSpeed = 299792458.0;
 
 bool sequence_to_vector(PyObject* object, std::vector<double>& values, const char* name) {
@@ -99,6 +100,20 @@ double wkb_exponent_impl(const std::vector<double>& coordinates_m,
     return (2.0 / kHbar) * std::sqrt(2.0 * reduced_mass_kg) * integral;
 }
 
+double wkb_exponent_profile_impl(const std::vector<double>& coordinates_m,
+                                 const std::vector<double>& potentials_j,
+                                 const double energy_j,
+                                 const std::vector<double>& effective_masses_kg) {
+    double integral = 0.0;
+    for (std::size_t index = 1; index < coordinates_m.size(); ++index) {
+        const double dx = coordinates_m[index] - coordinates_m[index - 1];
+        const double u0 = 2.0 * effective_masses_kg[index - 1] * (potentials_j[index - 1] - energy_j);
+        const double u1 = 2.0 * effective_masses_kg[index] * (potentials_j[index] - energy_j);
+        integral += dx * linear_sqrt_integral(u0, u1);
+    }
+    return (2.0 / kHbar) * integral;
+}
+
 double safe_exp(const double exponent) {
     if (exponent < -745.0) {
         return 0.0;
@@ -109,17 +124,17 @@ double safe_exp(const double exponent) {
     return std::exp(exponent);
 }
 
-double thermal_wkb_impl(const std::vector<double>& coordinates_m,
-                        std::vector<double> potentials_j,
-                        const double temperature,
-                        const double reduced_mass_kg,
-                        int energy_grid_points) {
-    const double reference = potentials_j.front();
-    for (double& value : potentials_j) {
-        value -= reference;
-    }
-    const double barrier = *std::max_element(potentials_j.begin(), potentials_j.end());
-    if (barrier <= 0.0) {
+// Polyrate-consistent SAG/WKB Boltzmann average with Kemble uniform P(E) = 1 / (1 + exp(2*theta))
+// and parabolic nonclassical reflection above the barrier (see polyhl.F:kapva and polyag.F:boltz).
+template <typename ExponentFn>
+double thermal_sag_integral_impl(const std::vector<double>& potentials_j,
+                                 const double temperature,
+                                 int energy_grid_points,
+                                 ExponentFn&& exponent_fn) {
+    const double threshold = std::max(potentials_j.front(), potentials_j.back());
+    const double vmax = *std::max_element(potentials_j.begin(), potentials_j.end());
+    const double vm = vmax - threshold;
+    if (vm <= 0.0) {
         return 1.0;
     }
 
@@ -127,24 +142,134 @@ double thermal_wkb_impl(const std::vector<double>& coordinates_m,
         ++energy_grid_points;
     }
     const double beta = 1.0 / (kBoltzmann * temperature);
-    const double step = barrier / static_cast<double>(energy_grid_points);
+    const double step = vm / static_cast<double>(energy_grid_points);
 
     auto integrand = [&](const double energy) {
-        const double exponent = wkb_exponent_impl(
-            coordinates_m, potentials_j, energy, reduced_mass_kg);
-        // This is the integrand after multiplying the canonical transmission
-        // integral by beta * exp(beta * V_barrier).  It avoids subtracting two
-        // exponentially small numbers at low temperature.
-        return beta * safe_exp(beta * (barrier - energy) - exponent);
+        const double gamma = exponent_fn(energy);
+        const double delta = std::max(0.0, beta * (vmax - energy));
+        if (delta == 0.0) {
+            return 0.0;
+        }
+        const double log_num = delta - gamma;
+        const double exp_num = safe_exp(log_num);
+        if (exp_num == 0.0) {
+            return 0.0;
+        }
+        const double reflection_factor = -std::expm1(-2.0 * delta);
+        const double kemble_denom = 1.0 + safe_exp(-gamma);
+        return beta * exp_num * (reflection_factor / kemble_denom);
     };
 
-    double sum = integrand(0.0) + integrand(barrier);
+    double sum = integrand(threshold) + integrand(vmax);
     for (int index = 1; index < energy_grid_points; ++index) {
-        const double energy = step * static_cast<double>(index);
+        const double energy = threshold + step * static_cast<double>(index);
         sum += (index % 2 == 0 ? 2.0 : 4.0) * integrand(energy);
     }
-    const double below_barrier = step * sum / 3.0;
-    return 1.0 + below_barrier;
+    return 1.0 + step * sum / 3.0;
+}
+
+double thermal_wkb_impl(const std::vector<double>& coordinates_m,
+                        const std::vector<double>& potentials_j,
+                        const double temperature,
+                        const double reduced_mass_kg,
+                        int energy_grid_points) {
+    return thermal_sag_integral_impl(
+        potentials_j, temperature, energy_grid_points, [&](const double energy) {
+            return wkb_exponent_impl(coordinates_m, potentials_j, energy, reduced_mass_kg);
+        });
+}
+
+double thermal_wkb_profile_impl(const std::vector<double>& coordinates_m,
+                                const std::vector<double>& potentials_j,
+                                const double temperature,
+                                const std::vector<double>& effective_masses_kg,
+                                int energy_grid_points) {
+    return thermal_sag_integral_impl(
+        potentials_j, temperature, energy_grid_points, [&](const double energy) {
+            return wkb_exponent_profile_impl(
+                coordinates_m, potentials_j, energy, effective_masses_kg);
+        });
+}
+
+double eckart_transmission_impl(const double energy_j,
+                                const double barrier_forward_j,
+                                const double barrier_reverse_j,
+                                const double imaginary_frequency_cm1) {
+    if (barrier_forward_j <= 0.0 || barrier_reverse_j <= 0.0) {
+        return energy_j >= std::max(0.0, barrier_forward_j - barrier_reverse_j) ? 1.0 : 0.0;
+    }
+    const double threshold = std::max(0.0, barrier_forward_j - barrier_reverse_j);
+    if (energy_j <= threshold) {
+        return 0.0;
+    }
+    const double u_star = kPlanck * kLightSpeed * 100.0 * std::abs(imaginary_frequency_cm1);
+    if (u_star <= 0.0) {
+        return energy_j >= barrier_forward_j ? 1.0 : 0.0;
+    }
+    const double inv_sqrt_sum =
+        (1.0 / std::sqrt(barrier_forward_j)) + (1.0 / std::sqrt(barrier_reverse_j));
+    const double two_pi_alpha = (2.0 * kPi / u_star) * std::sqrt(energy_j) / inv_sqrt_sum;
+    const double two_pi_beta =
+        (2.0 * kPi / u_star) *
+        std::sqrt(std::max(0.0, energy_j - barrier_forward_j + barrier_reverse_j)) / inv_sqrt_sum;
+    const double a_plus = two_pi_alpha + two_pi_beta;
+    const double a_minus = std::abs(two_pi_alpha - two_pi_beta);
+    const double d_arg = 16.0 * barrier_forward_j * barrier_reverse_j / (u_star * u_star) - 1.0;
+
+    if (d_arg >= 0.0) {
+        const double two_pi_delta = 0.5 * kPi * std::sqrt(d_arg);
+        const double scale = std::max(a_plus, two_pi_delta);
+        const double num =
+            (safe_exp(a_plus - scale) + safe_exp(-a_plus - scale)) -
+            (safe_exp(a_minus - scale) + safe_exp(-a_minus - scale));
+        const double den =
+            (safe_exp(a_plus - scale) + safe_exp(-a_plus - scale)) +
+            (safe_exp(two_pi_delta - scale) + safe_exp(-two_pi_delta - scale));
+        return std::clamp(num / den, 0.0, 1.0);
+    }
+    const double cos_term = 2.0 * std::cos(0.5 * kPi * std::sqrt(-d_arg));
+    const double scale = a_plus;
+    const double num =
+        (1.0 + safe_exp(-2.0 * a_plus)) -
+        (safe_exp(a_minus - scale) + safe_exp(-a_minus - scale));
+    const double den = (1.0 + safe_exp(-2.0 * a_plus)) + cos_term * safe_exp(-scale);
+    return std::clamp(num / den, 0.0, 1.0);
+}
+
+double thermal_eckart_impl(const double barrier_forward_j,
+                           const double barrier_reverse_j,
+                           const double imaginary_frequency_cm1,
+                           const double temperature,
+                           int energy_grid_points) {
+    const double threshold = std::max(0.0, barrier_forward_j - barrier_reverse_j);
+    const double vm = barrier_forward_j - threshold;
+    if (vm <= 0.0 || std::abs(imaginary_frequency_cm1) <= 0.0) {
+        return 1.0;
+    }
+    if (energy_grid_points % 2 != 0) {
+        ++energy_grid_points;
+    }
+    const double beta = 1.0 / (kBoltzmann * temperature);
+    // Integrate from threshold to barrier_forward + 12 * k_B * T (covering both tunneling
+    // and above-barrier Eckart reflection).
+    const double e_upper = barrier_forward_j + 16.0 * kBoltzmann * temperature;
+    const double step = (e_upper - threshold) / static_cast<double>(energy_grid_points);
+
+    auto integrand = [&](const double energy) {
+        const double prob = eckart_transmission_impl(
+            energy, barrier_forward_j, barrier_reverse_j, imaginary_frequency_cm1);
+        if (prob <= 0.0) {
+            return 0.0;
+        }
+        return beta * prob * safe_exp(beta * (barrier_forward_j - energy));
+    };
+
+    double sum = integrand(threshold) + integrand(e_upper);
+    for (int index = 1; index < energy_grid_points; ++index) {
+        const double energy = threshold + step * static_cast<double>(index);
+        sum += (index % 2 == 0 ? 2.0 : 4.0) * integrand(energy);
+    }
+    return step * sum / 3.0 + safe_exp(beta * (barrier_forward_j - e_upper));
 }
 
 bool solve_linear_system(std::vector<std::vector<double>>& matrix,
@@ -204,15 +329,15 @@ double polynomial_derivative(const std::vector<double>& coefficients, const doub
     return result;
 }
 
-struct RefinedMaximum {
+struct RefinedExtremum {
     double x;
     double y;
     std::size_t sample_index;
     std::size_t fit_points;
 };
 
-RefinedMaximum refine_maximum_impl(const std::vector<double>& x,
-                                   const std::vector<double>& y) {
+RefinedExtremum refine_maximum_impl(const std::vector<double>& x,
+                                    const std::vector<double>& y) {
     const auto maximum_iterator = std::max_element(y.begin(), y.end());
     const std::size_t maximum_index =
         static_cast<std::size_t>(std::distance(y.begin(), maximum_iterator));
@@ -220,11 +345,11 @@ RefinedMaximum refine_maximum_impl(const std::vector<double>& x,
         return {x[maximum_index], y[maximum_index], maximum_index, 1};
     }
 
-    const std::size_t count = std::min<std::size_t>(5, x.size());
-    std::size_t start = maximum_index > count / 2 ? maximum_index - count / 2 : 0;
-    if (start + count > x.size()) {
-        start = x.size() - count;
-    }
+    // Match Polyrate FITMAX (polyag.F:1864): use 5-point quartic fit when at least two
+    // points exist on both sides of the maximum, otherwise use 3-point parabolic fit.
+    const bool can_use_five = (x.size() >= 5 && maximum_index > 1 && maximum_index + 2 < x.size());
+    const std::size_t count = can_use_five ? 5 : 3;
+    const std::size_t start = maximum_index - count / 2;
 
     const double center = x[maximum_index];
     const double scale = std::max(
@@ -362,7 +487,7 @@ PyObject* py_refine_maximum(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "x must be strictly increasing");
         return nullptr;
     }
-    const RefinedMaximum result = refine_maximum_impl(x, y);
+    const RefinedExtremum result = refine_maximum_impl(x, y);
     return Py_BuildValue("ddnn", result.x, result.y,
                          static_cast<Py_ssize_t>(result.sample_index),
                          static_cast<Py_ssize_t>(result.fit_points));
@@ -399,6 +524,47 @@ PyObject* py_wkb_exponent(PyObject*, PyObject* args) {
     double result = 0.0;
     Py_BEGIN_ALLOW_THREADS
     result = wkb_exponent_impl(coordinates, potentials, energy, reduced_mass);
+    Py_END_ALLOW_THREADS
+    return PyFloat_FromDouble(result);
+}
+
+PyObject* py_wkb_exponent_profile(PyObject*, PyObject* args) {
+    PyObject* coordinate_object = nullptr;
+    PyObject* potential_object = nullptr;
+    double energy = 0.0;
+    PyObject* mass_object = nullptr;
+    if (!PyArg_ParseTuple(args, "OOdO:wkb_exponent_profile", &coordinate_object,
+                          &potential_object, &energy, &mass_object)) {
+        return nullptr;
+    }
+    std::vector<double> coordinates;
+    std::vector<double> potentials;
+    std::vector<double> effective_masses;
+    if (!sequence_to_vector(coordinate_object, coordinates, "coordinates_m") ||
+        !sequence_to_vector(potential_object, potentials, "potentials_j") ||
+        !sequence_to_vector(mass_object, effective_masses, "effective_masses_kg")) {
+        return nullptr;
+    }
+    if (coordinates.size() != potentials.size() ||
+        coordinates.size() != effective_masses.size() || coordinates.size() < 2) {
+        PyErr_SetString(
+            PyExc_ValueError,
+            "coordinates, potentials, and effective_masses require matching lengths >= 2");
+        return nullptr;
+    }
+    if (!strictly_increasing(coordinates)) {
+        PyErr_SetString(PyExc_ValueError, "coordinates must be strictly increasing");
+        return nullptr;
+    }
+    for (const double m : effective_masses) {
+        if (m <= 0.0) {
+            PyErr_SetString(PyExc_ValueError, "effective masses must be positive");
+            return nullptr;
+        }
+    }
+    double result = 0.0;
+    Py_BEGIN_ALLOW_THREADS
+    result = wkb_exponent_profile_impl(coordinates, potentials, energy, effective_masses);
     Py_END_ALLOW_THREADS
     return PyFloat_FromDouble(result);
 }
@@ -441,6 +607,97 @@ PyObject* py_thermal_wkb_kappa(PyObject*, PyObject* args) {
     Py_BEGIN_ALLOW_THREADS
     result = thermal_wkb_impl(
         coordinates, potentials, temperature, reduced_mass, energy_grid_points);
+    Py_END_ALLOW_THREADS
+    return PyFloat_FromDouble(result);
+}
+
+PyObject* py_thermal_wkb_profile_kappa(PyObject*, PyObject* args) {
+    PyObject* coordinate_object = nullptr;
+    PyObject* potential_object = nullptr;
+    double temperature = 0.0;
+    PyObject* mass_object = nullptr;
+    int energy_grid_points = 400;
+    if (!PyArg_ParseTuple(args, "OOdO|i:thermal_wkb_profile_kappa", &coordinate_object,
+                          &potential_object, &temperature, &mass_object,
+                          &energy_grid_points)) {
+        return nullptr;
+    }
+    std::vector<double> coordinates;
+    std::vector<double> potentials;
+    std::vector<double> effective_masses;
+    if (!sequence_to_vector(coordinate_object, coordinates, "coordinates_m") ||
+        !sequence_to_vector(potential_object, potentials, "potentials_j") ||
+        !sequence_to_vector(mass_object, effective_masses, "effective_masses_kg")) {
+        return nullptr;
+    }
+    if (coordinates.size() != potentials.size() ||
+        coordinates.size() != effective_masses.size() || coordinates.size() < 3) {
+        PyErr_SetString(
+            PyExc_ValueError,
+            "coordinates, potentials, and effective_masses require matching lengths >= 3");
+        return nullptr;
+    }
+    if (!strictly_increasing(coordinates)) {
+        PyErr_SetString(PyExc_ValueError, "coordinates must be strictly increasing");
+        return nullptr;
+    }
+    if (temperature <= 0.0) {
+        PyErr_SetString(PyExc_ValueError, "temperature must be positive");
+        return nullptr;
+    }
+    for (const double m : effective_masses) {
+        if (m <= 0.0) {
+            PyErr_SetString(PyExc_ValueError, "effective masses must be positive");
+            return nullptr;
+        }
+    }
+    if (energy_grid_points < 20) {
+        PyErr_SetString(PyExc_ValueError, "energy_grid_points must be at least 20");
+        return nullptr;
+    }
+    double result = 0.0;
+    Py_BEGIN_ALLOW_THREADS
+    result = thermal_wkb_profile_impl(
+        coordinates, potentials, temperature, effective_masses, energy_grid_points);
+    Py_END_ALLOW_THREADS
+    return PyFloat_FromDouble(result);
+}
+
+PyObject* py_eckart_transmission(PyObject*, PyObject* args) {
+    double energy = 0.0;
+    double barrier_forward = 0.0;
+    double barrier_reverse = 0.0;
+    double imag_freq = 0.0;
+    if (!PyArg_ParseTuple(args, "dddd:eckart_transmission", &energy, &barrier_forward,
+                          &barrier_reverse, &imag_freq)) {
+        return nullptr;
+    }
+    return PyFloat_FromDouble(
+        eckart_transmission_impl(energy, barrier_forward, barrier_reverse, imag_freq));
+}
+
+PyObject* py_thermal_eckart_kappa(PyObject*, PyObject* args) {
+    double barrier_forward = 0.0;
+    double barrier_reverse = 0.0;
+    double imag_freq = 0.0;
+    double temperature = 0.0;
+    int energy_grid_points = 400;
+    if (!PyArg_ParseTuple(args, "dddd|i:thermal_eckart_kappa", &barrier_forward,
+                          &barrier_reverse, &imag_freq, &temperature, &energy_grid_points)) {
+        return nullptr;
+    }
+    if (temperature <= 0.0) {
+        PyErr_SetString(PyExc_ValueError, "temperature must be positive");
+        return nullptr;
+    }
+    if (energy_grid_points < 20) {
+        PyErr_SetString(PyExc_ValueError, "energy_grid_points must be at least 20");
+        return nullptr;
+    }
+    double result = 0.0;
+    Py_BEGIN_ALLOW_THREADS
+    result = thermal_eckart_impl(
+        barrier_forward, barrier_reverse, imag_freq, temperature, energy_grid_points);
     Py_END_ALLOW_THREADS
     return PyFloat_FromDouble(result);
 }
@@ -492,7 +749,7 @@ PyObject* py_beyer_swinehart(PyObject*, PyObject* args) {
 }
 
 PyObject* py_native_version(PyObject*, PyObject*) {
-    return PyUnicode_FromString("pyrate-cpp-0.1");
+    return PyUnicode_FromString("pyrate-cpp-0.2");
 }
 
 PyMethodDef module_methods[] = {
@@ -504,8 +761,16 @@ PyMethodDef module_methods[] = {
      "Refine a sampled maximum using up to five local points."},
     {"wkb_exponent", py_wkb_exponent, METH_VARARGS,
      "Return the dimensionless WKB transmission exponent."},
+    {"wkb_exponent_profile", py_wkb_exponent_profile, METH_VARARGS,
+     "Return the dimensionless WKB/SCT transmission exponent for variable effective mass."},
     {"thermal_wkb_kappa", py_thermal_wkb_kappa, METH_VARARGS,
-     "Return a canonical one-dimensional WKB transmission correction."},
+     "Return a canonical one-dimensional WKB/ZCT transmission correction."},
+    {"thermal_wkb_profile_kappa", py_thermal_wkb_profile_kappa, METH_VARARGS,
+     "Return a canonical SCT/variable-mass WKB transmission correction."},
+    {"eckart_transmission", py_eckart_transmission, METH_VARARGS,
+     "Return the analytical Eckart barrier transmission probability."},
+    {"thermal_eckart_kappa", py_thermal_eckart_kappa, METH_VARARGS,
+     "Return the canonical thermal Eckart transmission coefficient."},
     {"beyer_swinehart", py_beyer_swinehart, METH_VARARGS,
      "Return a vibrational density-of-states grain array."},
     {"native_version", py_native_version, METH_NOARGS,

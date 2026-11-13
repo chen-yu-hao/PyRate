@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .calculation import CalculationResult, calculate_rates
-from .input import LoadedCalculation, load_input, load_toml
+from .input import LoadedCalculation, legacy_to_calculation, load_input, load_toml
 from .legacy import LegacyInput
 from .native import backend_info
 
@@ -84,11 +84,7 @@ def _write_output(text: str, output: str | None) -> None:
 def _run_command(args: argparse.Namespace) -> int:
     loaded = load_input(args.input)
     if isinstance(loaded, LegacyInput):
-        raise ValueError(
-            "legacy Polyrate files can currently be inspected and validated, but the solver "
-            "requires a PyRate TOML file because legacy potential hooks do not contain a "
-            "portable energy/frequency model"
-        )
+        loaded = legacy_to_calculation(loaded, fu40_path=getattr(args, "fu40", None))
     if args.rate_unit is not None:
         from dataclasses import replace
 
@@ -160,8 +156,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_parser = subparsers.add_parser("run", help="run a PyRate TOML calculation")
-    run_parser.add_argument("input", help="input TOML file")
+    run_parser = subparsers.add_parser("run", help="run a PyRate TOML or Polyrate .dat+.fu40 calculation")
+    run_parser.add_argument("input", help="input TOML or Polyrate .dat file")
+    run_parser.add_argument(
+        "--fu40", help="companion Polyrate unit-40 (.fu40) electronic-structure file"
+    )
     run_parser.add_argument(
         "--format", choices=("table", "json", "csv"), default="table"
     )
