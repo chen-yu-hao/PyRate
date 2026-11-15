@@ -37,54 +37,59 @@ def _fortran_float(token: str) -> float:
     return float(token.replace("D", "E").replace("d", "e"))
 
 
-def parse_fu15_summary(text: str) -> ReferenceRateTable:
-    """Parse the first forward/reverse rate table in a Polyrate ``fu15`` file."""
-
-    lines = text.splitlines()
-    summary_index: int | None = None
-    direction = ""
-    unit = ""
-    summary_pattern = re.compile(
+_SUMMARY_PATTERNS = (
+    re.compile(
         r"Summary\s+of\s+(forward|reverse)\s+rate\s+constants\s*\((.*?)\)",
         re.IGNORECASE,
-    )
-    for index, line in enumerate(lines):
-        match = summary_pattern.search(line)
-        if match:
-            summary_index = index
-            direction = match.group(1).lower()
-            unit = match.group(2).strip()
-            break
-    if summary_index is None:
-        raise ValueError("no Polyrate rate summary found")
+    ),
+    re.compile(
+        r"^\s*(Forward|Reverse)\s+TST\s+rate\s+constants\s*:",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"FINAL\s+RATE\s+CONSTANTS\s+IVTST-\d+\s*\((.*?)\)",
+        re.IGNORECASE,
+    ),
+)
 
+
+def _parse_subtable(
+    lines: list[str], start_index: int
+) -> tuple[tuple[str, ...], list[ReferenceRateRow], int] | None:
     header_index: int | None = None
-    for index in range(summary_index + 1, min(len(lines), summary_index + 20)):
-        if "T(K)" in lines[index].upper().replace(" ", ""):
+    for index in range(start_index, min(len(lines), start_index + 20)):
+        stripped = lines[index].strip()
+        if any(pat.search(lines[index]) for pat in _SUMMARY_PATTERNS) and index > start_index:
+            return None
+        if "T(K)" in stripped.upper().replace(" ", ""):
             header_index = index
             break
     if header_index is None:
-        raise ValueError("rate summary has no T(K) header")
+        return None
 
     header_tokens = lines[header_index].split()
     if not header_tokens or header_tokens[0].upper() != "T(K)":
-        raise ValueError("unrecognized rate-summary header")
+        return None
     columns = tuple(header_tokens[1:])
     rows: list[ReferenceRateRow] = []
     row_pattern = re.compile(rf"^\s*({_NUMBER})(?:\s+({_NUMBER}))+\s*$")
-    for line in lines[header_index + 1 :]:
+    next_index = len(lines)
+    for offset, line in enumerate(lines[header_index + 1 :], start=header_index + 1):
         stripped = line.strip()
         if not stripped:
             if rows:
+                next_index = offset + 1
                 break
             continue
         if not row_pattern.match(line):
             if rows:
+                next_index = offset
                 break
             continue
         tokens = stripped.split()
         if len(tokens) != len(columns) + 1:
             if rows:
+                next_index = offset
                 break
             continue
         rows.append(
@@ -94,7 +99,62 @@ def parse_fu15_summary(text: str) -> ReferenceRateTable:
             )
         )
     if not rows:
-        raise ValueError("rate summary contains no numeric rows")
+        return None
+    return columns, rows, next_index
+
+
+def parse_fu15_summary(text: str) -> ReferenceRateTable:
+    """Parse the first forward/reverse rate table in a Polyrate ``fu15`` file."""
+
+    lines = text.splitlines()
+    summary_index: int | None = None
+    direction = ""
+    unit = ""
+    for index, line in enumerate(lines):
+        m0 = _SUMMARY_PATTERNS[0].search(line)
+        if m0:
+            summary_index = index
+            direction = m0.group(1).lower()
+            unit = m0.group(2).strip()
+            break
+        m1 = _SUMMARY_PATTERNS[1].search(line)
+        if m1:
+            summary_index = index
+            direction = m1.group(1).lower()
+            unit = "cm**3/molecule-1 s-1"
+            break
+        m2 = _SUMMARY_PATTERNS[2].search(line)
+        if m2:
+            summary_index = index
+            direction = "forward"
+            unit = m2.group(1).strip()
+            break
+    if summary_index is None:
+        raise ValueError("no Polyrate rate summary found")
+
+    first = _parse_subtable(lines, summary_index + 1)
+    if first is None:
+        raise ValueError("rate summary has no valid T(K) subtable")
+    columns, rows, next_index = first
+
+    # Polyrate often prints a continuation subtable (e.g. CVT/COMT, CVT/mOMT)
+    # immediately below the main table under the same summary header.
+    while next_index < len(lines):
+        continuation = _parse_subtable(lines, next_index)
+        if continuation is None:
+            break
+        cont_cols, cont_rows, next_index = continuation
+        if [r.temperature_k for r in cont_rows] != [r.temperature_k for r in rows]:
+            break
+        columns = columns + cont_cols
+        rows = [
+            ReferenceRateRow(
+                temperature_k=r1.temperature_k,
+                values=r1.values + r2.values,
+            )
+            for r1, r2 in zip(rows, cont_rows)
+        ]
+
     return ReferenceRateTable(
         direction=direction, unit=unit, columns=columns, rows=tuple(rows)
     )

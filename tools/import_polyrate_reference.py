@@ -26,12 +26,17 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_non_polyrate_data_file(path: Path, root: Path) -> bool:
+    rel_parts = [part.lower() for part in path.relative_to(root).parts]
+    return "poten" in rel_parts or "util" in rel_parts or "pot" in rel_parts[:-1]
+
+
 def discover_inputs(root: Path) -> list[Path]:
     candidates = [
         path
         for suffix in ("*.dat", "*.fu5")
         for path in root.rglob(suffix)
-        if path.is_file()
+        if path.is_file() and not _is_non_polyrate_data_file(path, root)
     ]
     # Prefer one path per physical file and stable ordering.
     return sorted(set(candidates), key=lambda path: str(path.relative_to(root)))
@@ -52,8 +57,11 @@ def build_manifest(root: Path) -> dict[str, Any]:
         }
         try:
             document = load_legacy(input_path)
+            sections_upper = {s.name.upper() for s in document.sections}
+            is_auxiliary = sections_upper.issubset({"VTSTIC", "IVTST"})
             case.update(
                 {
+                    "role": "auxiliary_unit50" if is_auxiliary else "calculation_input",
                     "title": document.title,
                     "temperatures_k": list(document.temperatures_k),
                     "requested_methods": list(document.requested_methods()),
@@ -68,17 +76,20 @@ def build_manifest(root: Path) -> dict[str, Any]:
             output = sorted(outputs, key=str)[0]
             case["fu15"] = str(output.relative_to(root))
             case["fu15_sha256"] = sha256(output)
-            try:
-                table = load_fu15_summary(output)
-                case["reference"] = {
-                    "direction": table.direction,
-                    "unit": table.unit,
-                    "columns": list(table.columns),
-                    "temperatures_k": [row.temperature_k for row in table.rows],
-                    "values": [list(row.values) for row in table.rows],
-                }
-            except ValueError as exc:
-                case["fu15_parse_error"] = str(exc)
+            if output.stat().st_size == 0:
+                case["reference_status"] = "empty_fu15_output"
+            else:
+                try:
+                    table = load_fu15_summary(output)
+                    case["reference"] = {
+                        "direction": table.direction,
+                        "unit": table.unit,
+                        "columns": list(table.columns),
+                        "temperatures_k": [row.temperature_k for row in table.rows],
+                        "values": [list(row.values) for row in table.rows],
+                    }
+                except ValueError as exc:
+                    case["fu15_parse_error"] = str(exc)
         cases.append(case)
 
     return {

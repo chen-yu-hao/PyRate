@@ -16,19 +16,45 @@ from .reference import ReferenceRateTable, parse_fu15_summary
 
 
 _SUMMARY = re.compile(
-    r"^\s*Summary\s+of\s+(?:forward|reverse)\s+rate\s+constants\s*\(",
+    r"(?:^\s*Summary\s+of\s+(?:forward|reverse)\s+rate\s+constants\s*\("
+    r"|^\s*(?:Forward|Reverse)\s+TST\s+rate\s+constants\s*:"
+    r"|FINAL\s+RATE\s+CONSTANTS\s+IVTST-\d+\s*\()",
     flags=re.IGNORECASE | re.MULTILINE,
 )
 # Convert to m^3 mol^-1 s^-1 (or to s^-1 for first-order rates).
 _UNIT_FACTORS: dict[str, tuple[str, float]] = {
     "s-1": ("first-order", 1.0),
+    "sec-1": ("first-order", 1.0),
+    "1s": ("first-order", 1.0),
+    "1sec": ("first-order", 1.0),
     "m3mol-1s-1": ("second-order", 1.0),
     "cm3mol-1s-1": ("second-order", 1.0e-6),
     "lmol-1s-1": ("second-order", 1.0e-3),
     "cm3molecule-1s-1": ("second-order", 1.0e-6 * AVOGADRO_MOL),
+    "cm3molecule-1sec-1": ("second-order", 1.0e-6 * AVOGADRO_MOL),
+    "cm3moleculesec": ("second-order", 1.0e-6 * AVOGADRO_MOL),
+    "cm3molecule-sec": ("second-order", 1.0e-6 * AVOGADRO_MOL),
 }
 DEFAULT_COLUMN_MAP: Mapping[str, str] = {"TST": "k_tst", "CVT": "k_cvt"}
-_ALLOWED_FIELDS = frozenset({"k_tst", "k_cvt", "k_final"})
+EXTENDED_COLUMN_MAP: Mapping[str, str] = {
+    "TST": "k_tst",
+    "CVT": "k_cvt",
+    "CUS": "k_cus",
+    "MUVT": "k_muvt",
+    "MCVT": "k_muvt",
+    "US": "k_us",
+}
+_ALLOWED_FIELDS = frozenset(
+    {
+        "k_tst",
+        "k_cvt",
+        "k_cus",
+        "k_muvt",
+        "k_us",
+        "k_final",
+        "k_reverse_final",
+    }
+)
 
 
 def parse_fu15_tables(text: str) -> tuple[ReferenceRateTable, ...]:
