@@ -16,7 +16,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from pyrate.head_to_head import compare_fu15_to_pyrate, parse_fu15_tables  # noqa: E402
+from pyrate.head_to_head import (  # noqa: E402
+    DEFAULT_COLUMN_MAP,
+    TUNNELING_COLUMN_MAP,
+    compare_fu15_to_pyrate,
+    parse_fu15_tables,
+)
 
 
 def main() -> int:
@@ -24,6 +29,11 @@ def main() -> int:
     parser.add_argument("reference", type=Path, help="Polyrate .fu15 reference file")
     parser.add_argument("result", type=Path, help="PyRate --format json result")
     parser.add_argument("--direction", choices=("forward", "reverse"), default="forward")
+    parser.add_argument(
+        "--tunneling",
+        action="store_true",
+        help="include CVT/ZCT, CVT/SCT, CVT/LCT, CVT/LCG3, CVT/LCG4, CVT/COMT, CVT/mOMT mappings",
+    )
     parser.add_argument("--column", action="append", default=[], metavar="REF=FIELD",
                         help="explicit map, e.g. CVT=k_cvt; repeatable (defaults TST, CVT)")
     parser.add_argument("--rtol", type=float, default=5.0e-3)
@@ -40,7 +50,7 @@ def main() -> int:
                 "manual selection is required for ambiguous files"
             )
         result = json.loads(args.result.read_text(encoding="utf-8"))
-        mapping = {"TST": "k_tst", "CVT": "k_cvt"}
+        mapping = dict(TUNNELING_COLUMN_MAP if args.tunneling else DEFAULT_COLUMN_MAP)
         for pair in args.column:
             if pair.count("=") != 1 or not all(piece.strip() for piece in pair.split("=")):
                 raise ValueError(f"invalid column mapping {pair!r}; expected REF=FIELD")

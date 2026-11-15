@@ -750,6 +750,449 @@ PyObject* py_beyer_swinehart(PyObject*, PyObject* args) {
     return result;
 }
 
+PyObject* py_gauss_legendre_quadrature(PyObject*, PyObject* args) {
+    double lower = 0.0;
+    double upper = 0.0;
+    int n_points = 0;
+    if (!PyArg_ParseTuple(args, "ddi:gauss_legendre_quadrature", &lower, &upper, &n_points)) {
+        return nullptr;
+    }
+    if (n_points <= 0) {
+        PyErr_SetString(PyExc_ValueError, "n_points must be positive");
+        return nullptr;
+    }
+    std::vector<double> nodes(static_cast<std::size_t>(n_points), 0.0);
+    std::vector<double> weights(static_cast<std::size_t>(n_points), 0.0);
+    Py_BEGIN_ALLOW_THREADS
+    const std::size_t n = static_cast<std::size_t>(n_points);
+    const std::size_t m = (n + 1) / 2;
+    const double xm = 0.5 * (upper + lower);
+    const double xl = 0.5 * (upper - lower);
+    for (std::size_t i = 0; i < m; ++i) {
+        double z = std::cos(kPi * (static_cast<double>(i) + 0.75) / (static_cast<double>(n) + 0.5));
+        double pp = 0.0;
+        for (int iter = 0; iter < 64; ++iter) {
+            double p1 = 1.0;
+            double p2 = 0.0;
+            for (std::size_t j = 1; j <= n; ++j) {
+                const double p3 = p2;
+                p2 = p1;
+                p1 = ((2.0 * static_cast<double>(j) - 1.0) * z * p2 -
+                      (static_cast<double>(j) - 1.0) * p3) /
+                     static_cast<double>(j);
+            }
+            pp = static_cast<double>(n) * (z * p1 - p2) / (z * z - 1.0);
+            const double z1 = z;
+            z = z1 - p1 / pp;
+            if (std::abs(z - z1) <= 1.0e-15) {
+                break;
+            }
+        }
+        nodes[i] = xm - xl * z;
+        nodes[n - 1 - i] = xm + xl * z;
+        const double w = 2.0 * std::abs(xl) / ((1.0 - z * z) * pp * pp);
+        weights[i] = w;
+        weights[n - 1 - i] = w;
+    }
+    if (lower > upper) {
+        std::reverse(nodes.begin(), nodes.end());
+        std::reverse(weights.begin(), weights.end());
+    }
+    Py_END_ALLOW_THREADS
+
+    PyObject* py_nodes = PyTuple_New(n_points);
+    PyObject* py_weights = PyTuple_New(n_points);
+    if (py_nodes == nullptr || py_weights == nullptr) {
+        Py_XDECREF(py_nodes);
+        Py_XDECREF(py_weights);
+        return nullptr;
+    }
+    for (int i = 0; i < n_points; ++i) {
+        PyTuple_SET_ITEM(py_nodes, i, PyFloat_FromDouble(nodes[static_cast<std::size_t>(i)]));
+        PyTuple_SET_ITEM(py_weights, i, PyFloat_FromDouble(weights[static_cast<std::size_t>(i)]));
+    }
+    PyObject* pair = PyTuple_New(2);
+    if (pair == nullptr) {
+        Py_DECREF(py_nodes);
+        Py_DECREF(py_weights);
+        return nullptr;
+    }
+    PyTuple_SET_ITEM(pair, 0, py_nodes);
+    PyTuple_SET_ITEM(pair, 1, py_weights);
+    return pair;
+}
+
+double neville_polint_slice(const double* xa, const double* ya, const std::size_t n, const double x) {
+    if (n == 0) {
+        return 0.0;
+    }
+    if (n == 1) {
+        return ya[0];
+    }
+    std::vector<double> c(ya, ya + n);
+    std::vector<double> d(ya, ya + n);
+    std::size_t ns = 0;
+    double dif = std::abs(x - xa[0]);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double dift = std::abs(x - xa[i]);
+        if (dift < dif) {
+            ns = i;
+            dif = dift;
+        }
+    }
+    double y = ya[ns];
+    for (std::size_t m = 1; m < n; ++m) {
+        for (std::size_t i = 0; i + m < n; ++i) {
+            const double ho = xa[i] - x;
+            const double hp = xa[i + m] - x;
+            const double w = c[i + 1] - d[i];
+            const double den = ho - hp;
+            if (std::abs(den) <= 1.0e-30) {
+                d[i] = 0.0;
+                c[i] = 0.0;
+            } else {
+                const double ratio = w / den;
+                d[i] = hp * ratio;
+                c[i] = ho * ratio;
+            }
+        }
+        double dy = 0.0;
+        if (2 * ns < (n - m)) {
+            dy = c[ns];
+        } else {
+            --ns;
+            dy = d[ns];
+        }
+        y += dy;
+    }
+    return y;
+}
+
+void gauss_legendre_fill(const double lower,
+                         const double upper,
+                         const std::size_t n,
+                         std::vector<double>& nodes,
+                         std::vector<double>& weights) {
+    nodes.resize(n);
+    weights.resize(n);
+    const std::size_t m = (n + 1) / 2;
+    const double a = std::min(lower, upper);
+    const double b = std::max(lower, upper);
+    const double xm = 0.5 * (b + a);
+    const double xl = 0.5 * (b - a);
+    for (std::size_t i = 0; i < m; ++i) {
+        double z = std::cos(kPi * (static_cast<double>(i) + 0.75) / (static_cast<double>(n) + 0.5));
+        double pp = 0.0;
+        for (int iter = 0; iter < 64; ++iter) {
+            double p1 = 1.0;
+            double p2 = 0.0;
+            for (std::size_t j = 1; j <= n; ++j) {
+                const double p3 = p2;
+                p2 = p1;
+                p1 = ((2.0 * static_cast<double>(j) - 1.0) * z * p2 -
+                      (static_cast<double>(j) - 1.0) * p3) /
+                     static_cast<double>(j);
+            }
+            pp = static_cast<double>(n) * (z * p1 - p2) / (z * z - 1.0);
+            const double z1 = z;
+            z = z1 - p1 / pp;
+            if (std::abs(z - z1) <= 1.0e-15) {
+                break;
+            }
+        }
+        nodes[i] = xm - xl * z;
+        nodes[n - 1 - i] = xm + xl * z;
+        const double w = 2.0 * xl / ((1.0 - z * z) * pp * pp);
+        weights[i] = w;
+        weights[n - 1 - i] = w;
+    }
+}
+
+PyObject* py_neville_interpolate(PyObject*, PyObject* args) {
+    PyObject* x_obj = nullptr;
+    PyObject* y_obj = nullptr;
+    double target_x = 0.0;
+    if (!PyArg_ParseTuple(args, "OOd:neville_interpolate", &x_obj, &y_obj, &target_x)) {
+        return nullptr;
+    }
+    std::vector<double> x;
+    std::vector<double> y;
+    if (!sequence_to_vector(x_obj, x, "x_nodes") || !sequence_to_vector(y_obj, y, "y_nodes")) {
+        return nullptr;
+    }
+    if (x.size() != y.size() || x.empty()) {
+        PyErr_SetString(PyExc_ValueError, "x_nodes and y_nodes must have matching non-zero length");
+        return nullptr;
+    }
+    return PyFloat_FromDouble(neville_polint_slice(x.data(), y.data(), x.size(), target_x));
+}
+
+// Polyrate LCSINT (polyhl.F:3304-3377): integrate tunneling amplitudes along MEP termini.
+// All arrays have length nemx = nemax + 1 (last index is barrier top).
+// ie0_index is the 0-based index of the first open energy (IS0 - 1 in Fortran).
+PyObject* py_lct_integrate_amplitudes(PyObject*, PyObject* args) {
+    PyObject* st_obj = nullptr;
+    PyObject* esv_obj = nullptr;
+    PyObject* sinx_obj = nullptr;
+    PyObject* theta_obj = nullptr;
+    PyObject* tau_obj = nullptr;
+    double reduced_mass = 0.0;
+    int ie0_index = 0;
+    int n_quad = 120;
+    int poly_order = 4;
+    if (!PyArg_ParseTuple(args, "OOOOOdi|ii:lct_integrate_amplitudes",
+                          &st_obj, &esv_obj, &sinx_obj, &theta_obj, &tau_obj,
+                          &reduced_mass, &ie0_index, &n_quad, &poly_order)) {
+        return nullptr;
+    }
+    std::vector<double> st;
+    std::vector<double> esv;
+    std::vector<double> sinx;
+    std::vector<double> theta;
+    std::vector<double> tau;
+    if (!sequence_to_vector(st_obj, st, "st") ||
+        !sequence_to_vector(esv_obj, esv, "energies") ||
+        !sequence_to_vector(sinx_obj, sinx, "sin_chi") ||
+        !sequence_to_vector(theta_obj, theta, "theta") ||
+        !sequence_to_vector(tau_obj, tau, "tau")) {
+        return nullptr;
+    }
+    const std::size_t nemx = esv.size();
+    if (nemx < 2 || st.size() != nemx || sinx.size() != nemx ||
+        theta.size() != nemx || tau.size() != nemx) {
+        PyErr_SetString(PyExc_ValueError,
+                        "st, energies, sin_chi, theta, and tau must have matching length >= 2");
+        return nullptr;
+    }
+    if (reduced_mass <= 0.0 || n_quad <= 0 || poly_order <= 0) {
+        PyErr_SetString(PyExc_ValueError, "reduced_mass, n_quad, and poly_order must be positive");
+        return nullptr;
+    }
+
+    std::vector<double> amplitudes(nemx, 0.0);
+    Py_BEGIN_ALLOW_THREADS
+    const std::size_t is0 = static_cast<std::size_t>(std::max(0, ie0_index));
+    if (is0 + 1 < nemx) {
+        const std::size_t avail = nemx - is0;
+        const std::size_t nn = std::min(static_cast<std::size_t>(poly_order), avail);
+        std::vector<double> sx;
+        std::vector<double> wtx;
+        for (std::size_t is_idx = is0 + 1; is_idx + 1 < nemx; ++is_idx) {
+            const double s1 = st[is_idx - 1];
+            const double s2 = st[is_idx];
+            if (std::abs(s2 - s1) <= 1.0e-15) {
+                continue;
+            }
+            gauss_legendre_fill(s1, s2, static_cast<std::size_t>(n_quad), sx, wtx);
+            const std::size_t jj = is_idx - 1;
+            std::size_t nm = nn / 2;
+            if (jj == is0 || nm == 0) {
+                nm = 1;
+            }
+            if (jj + 1 == nemx && nn >= 3) {
+                nm = nn - 1;
+            }
+            std::size_t jnl = (jj + 1 >= nm) ? (jj + 1 - nm) : is0;
+            if (jnl < is0) {
+                jnl = is0;
+            }
+            if (jnl + nn > nemx) {
+                jnl = nemx - nn;
+            }
+            for (std::size_t iq = 0; iq < sx.size(); ++iq) {
+                const double sxx = sx[iq];
+                const double yth = neville_polint_slice(&st[jnl], &theta[jnl], nn, sxx);
+                const double yt = neville_polint_slice(&st[jnl], &tau[jnl], nn, sxx);
+                const double yv = neville_polint_slice(&st[jnl], &esv[jnl], nn, sxx);
+                const double ys = neville_polint_slice(&st[jnl], &sinx[jnl], nn, sxx);
+                if (yt <= 0.0 || ys == 0.0) {
+                    continue;
+                }
+                const double exp_th = safe_exp(-yth);
+                if (exp_th <= 0.0 || !std::isfinite(exp_th)) {
+                    continue;
+                }
+                const double term = wtx[iq] * (ys / yt) * exp_th;
+                for (std::size_t ie = is_idx; ie + 1 < nemx; ++ie) {
+                    const double vr_sq = 2.0 * (esv[ie] - yv) / reduced_mass;
+                    if (vr_sq > 0.0) {
+                        amplitudes[ie] += term / std::sqrt(vr_sq);
+                    }
+                }
+            }
+        }
+    }
+    Py_END_ALLOW_THREADS
+
+    PyObject* out = PyTuple_New(static_cast<Py_ssize_t>(nemx));
+    if (out == nullptr) {
+        return nullptr;
+    }
+    for (std::size_t i = 0; i < nemx; ++i) {
+        PyTuple_SET_ITEM(out, static_cast<Py_ssize_t>(i), PyFloat_FromDouble(amplitudes[i]));
+    }
+    return out;
+}
+
+// Polyrate LCPROB + LCGSRT (polyhl.F:2800-2823, 3045-3078).
+PyObject* py_lct_uniformize_probabilities(PyObject*, PyObject* args) {
+    PyObject* rows_obj = nullptr;
+    if (!PyArg_ParseTuple(args, "O:lct_uniformize_probabilities", &rows_obj)) {
+        return nullptr;
+    }
+    PyObject* outer = PySequence_Fast(rows_obj, "expected a sequence of state probability rows");
+    if (outer == nullptr) {
+        return nullptr;
+    }
+    const Py_ssize_t n_states = PySequence_Fast_GET_SIZE(outer);
+    if (n_states <= 0) {
+        Py_DECREF(outer);
+        PyErr_SetString(PyExc_ValueError, "cumulative_primitives must contain at least one state");
+        return nullptr;
+    }
+    std::vector<std::vector<double>> prim(static_cast<std::size_t>(n_states));
+    PyObject** row_items = PySequence_Fast_ITEMS(outer);
+    std::size_t nemx = 0;
+    for (Py_ssize_t s = 0; s < n_states; ++s) {
+        if (!sequence_to_vector(row_items[s], prim[static_cast<std::size_t>(s)], "state_row")) {
+            Py_DECREF(outer);
+            return nullptr;
+        }
+        if (s == 0) {
+            nemx = prim[0].size();
+            if (nemx < 2) {
+                Py_DECREF(outer);
+                PyErr_SetString(PyExc_ValueError, "each state row must contain at least 2 entries");
+                return nullptr;
+            }
+        } else if (prim[static_cast<std::size_t>(s)].size() != nemx) {
+            Py_DECREF(outer);
+            PyErr_SetString(PyExc_ValueError, "all state rows must have equal length");
+            return nullptr;
+        }
+    }
+    Py_DECREF(outer);
+
+    const std::size_t nemax = nemx - 1;
+    std::vector<std::vector<double>> unif(
+        static_cast<std::size_t>(n_states), std::vector<double>(nemx, 0.0));
+    std::vector<double> sorted_probs(nemax, 0.0);
+
+    Py_BEGIN_ALLOW_THREADS
+    for (std::size_t s = 0; s < static_cast<std::size_t>(n_states); ++s) {
+        const double pvag = prim[s][nemax];
+        unif[s][nemax] = 0.5;
+        for (std::size_t j = 0; j < nemax; ++j) {
+            const double pixx = prim[s][j];
+            if (pixx > 0.0) {
+                const double term = pixx / (1.0 + pixx);
+                double plc = term;
+                if (pvag > 1.0e-30) {
+                    plc = (1.0 + (1.0 / pvag - 1.0) * pixx / (2.0 * pvag)) * term;
+                }
+                unif[s][j] = std::clamp(plc, 0.0, 1.0);
+            } else {
+                unif[s][j] = 0.0;
+            }
+            if (s == 0 || unif[s][j] > sorted_probs[j]) {
+                sorted_probs[j] = unif[s][j];
+            }
+        }
+    }
+    Py_END_ALLOW_THREADS
+
+    PyObject* py_unif = PyTuple_New(n_states);
+    PyObject* py_sorted = PyTuple_New(static_cast<Py_ssize_t>(nemax));
+    if (py_unif == nullptr || py_sorted == nullptr) {
+        Py_XDECREF(py_unif);
+        Py_XDECREF(py_sorted);
+        return nullptr;
+    }
+    for (Py_ssize_t s = 0; s < n_states; ++s) {
+        PyObject* row_tup = PyTuple_New(static_cast<Py_ssize_t>(nemx));
+        if (row_tup == nullptr) {
+            Py_DECREF(py_unif);
+            Py_DECREF(py_sorted);
+            return nullptr;
+        }
+        for (std::size_t j = 0; j < nemx; ++j) {
+            PyTuple_SET_ITEM(
+                row_tup, static_cast<Py_ssize_t>(j),
+                PyFloat_FromDouble(unif[static_cast<std::size_t>(s)][j]));
+        }
+        PyTuple_SET_ITEM(py_unif, s, row_tup);
+    }
+    for (std::size_t j = 0; j < nemax; ++j) {
+        PyTuple_SET_ITEM(
+            py_sorted, static_cast<Py_ssize_t>(j), PyFloat_FromDouble(sorted_probs[j]));
+    }
+    PyObject* pair = PyTuple_New(2);
+    if (pair == nullptr) {
+        Py_DECREF(py_unif);
+        Py_DECREF(py_sorted);
+        return nullptr;
+    }
+    PyTuple_SET_ITEM(pair, 0, py_unif);
+    PyTuple_SET_ITEM(pair, 1, py_sorted);
+    return pair;
+}
+
+// Polyrate BOLTZ (polyag.F:1334-1389): Boltzmann average of any P(E) table on [E_Z, V_max]
+// including symmetric nonclassical barrier reflection without underflow/overflow clamping.
+PyObject* py_thermal_boltz_probabilities_kappa(PyObject*, PyObject* args) {
+    PyObject* energies_obj = nullptr;
+    PyObject* weights_obj = nullptr;
+    PyObject* probs_obj = nullptr;
+    double barrier_j = 0.0;
+    double temperature_k = 0.0;
+    if (!PyArg_ParseTuple(args, "OOOdd:thermal_boltz_probabilities_kappa",
+                          &energies_obj, &weights_obj, &probs_obj,
+                          &barrier_j, &temperature_k)) {
+        return nullptr;
+    }
+    if (temperature_k <= 0.0) {
+        PyErr_SetString(PyExc_ValueError, "temperature must be positive");
+        return nullptr;
+    }
+    std::vector<double> energies;
+    std::vector<double> weights;
+    std::vector<double> probs;
+    if (!sequence_to_vector(energies_obj, energies, "energies_j") ||
+        !sequence_to_vector(weights_obj, weights, "weights_j") ||
+        !sequence_to_vector(probs_obj, probs, "probabilities")) {
+        return nullptr;
+    }
+    if (energies.size() != weights.size() || energies.size() != probs.size()) {
+        PyErr_SetString(PyExc_ValueError,
+                        "energies_j, weights_j, and probabilities must have equal length");
+        return nullptr;
+    }
+
+    double result = 1.0;
+    Py_BEGIN_ALLOW_THREADS
+    const double beta = 1.0 / (kBoltzmann * temperature_k);
+    double sum = 0.0;
+    for (std::size_t i = 0; i < energies.size(); ++i) {
+        const double p = probs[i];
+        if (p <= 0.0) {
+            continue;
+        }
+        const double delta = std::max(0.0, beta * (barrier_j - energies[i]));
+        if (delta <= 0.0) {
+            continue;
+        }
+        const double exp_num = safe_exp(delta + std::log(p));
+        if (exp_num == 0.0) {
+            continue;
+        }
+        const double reflection_factor = -std::expm1(-2.0 * delta);
+        sum += beta * weights[i] * exp_num * reflection_factor;
+    }
+    result = 1.0 + sum;
+    Py_END_ALLOW_THREADS
+    return PyFloat_FromDouble(result);
+}
+
 PyObject* py_native_version(PyObject*, PyObject*) {
     return PyUnicode_FromString("pyrate-cpp-0.2");
 }
@@ -775,6 +1218,16 @@ PyMethodDef module_methods[] = {
      "Return the canonical thermal Eckart transmission coefficient."},
     {"beyer_swinehart", py_beyer_swinehart, METH_VARARGS,
      "Return a vibrational density-of-states grain array."},
+    {"gauss_legendre_quadrature", py_gauss_legendre_quadrature, METH_VARARGS,
+     "Return n-point Gauss-Legendre quadrature nodes and weights on [lower, upper]."},
+    {"neville_interpolate", py_neville_interpolate, METH_VARARGS,
+     "Evaluate Neville polynomial interpolation (Polyrate POLINT)."},
+    {"lct_integrate_amplitudes", py_lct_integrate_amplitudes, METH_VARARGS,
+     "Integrate LCT/LCG3/LCG4 tunneling amplitudes over path termini (Polyrate LCSINT)."},
+    {"lct_uniformize_probabilities", py_lct_uniformize_probabilities, METH_VARARGS,
+     "Uniformize and state-sort LCT cumulative primitive probabilities (Polyrate LCPROB/LCGSRT)."},
+    {"thermal_boltz_probabilities_kappa", py_thermal_boltz_probabilities_kappa, METH_VARARGS,
+     "Boltzmann-integrate a transmission probability table with nonclassical barrier reflection."},
     {"native_version", py_native_version, METH_NOARGS,
      "Return the native-kernel ABI version."},
     {nullptr, nullptr, 0, nullptr},

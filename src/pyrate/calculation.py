@@ -5,6 +5,16 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from .lct import (
+    LctResult,
+    can_compute_lct,
+    comt_kappa_from_result,
+    lct_kappa_from_result,
+    muomt_kappa_from_result,
+    reaction_lct_result,
+    sct_kappa_from_result,
+    zct_kappa_from_result,
+)
 from .models import CalculationOptions, Reaction
 from .rates import (
     conventional_tst_rate_si,
@@ -46,9 +56,15 @@ class RateRow:
     kappa_wigner: float | None = None
     kappa_zct: float | None = None
     kappa_sct: float | None = None
+    kappa_lct: float | None = None
     kappa_eckart: float | None = None
     kappa_comt: float | None = None
     kappa_muomt: float | None = None
+    k_cvt_zct: float | None = None
+    k_cvt_sct: float | None = None
+    k_cvt_lct: float | None = None
+    k_cvt_comt: float | None = None
+    k_cvt_muomt: float | None = None
     equilibrium_kc: float | None = None
     k_reverse_final: float | None = None
 
@@ -86,30 +102,51 @@ def calculate_rates(
 
     if options.method in {"cvt", "cus", "muvt", "us", "all"} and reaction.path is None:
         raise ValueError(f"method = {options.method!r} requires a reaction path")
+    if options.tunneling in {"lct", "lcg3", "lcg4"} and not can_compute_lct(reaction):
+        raise ValueError(
+            f"tunneling = {options.tunneling!r} requires an atomistic reaction path "
+            "with at least 3 points and 3 atoms"
+        )
     if (
-        options.tunneling in {"zct", "mepsag", "sct", "cd-scsag", "omt", "comt", "muomt"}
+        options.tunneling in {"zct", "mepsag", "sct", "cd-scsag", "omt", "comt", "muomt", "momt"}
         and options.tunneling_profile is None
         and reaction.path is None
     ):
         raise ValueError(
-            f"tunneling = {options.tunneling!r} requires either a tunneling_profile or a reaction path"
+            f"tunneling = {options.tunneling!r} requires either "
+            "a tunneling_profile or a reaction path"
         )
 
     rate_unit = normalize_rate_unit(options.output_rate_unit, reaction.molecularity)
     rows: list[RateRow] = []
+
+    lct_result: LctResult | None = None
+    want_lct = (
+        options.tunneling in {"lct", "lcg3", "lcg4"}
+        or (
+            options.tunneling_profile is None
+            and can_compute_lct(reaction)
+            and (
+                options.tunneling in {"omt", "comt", "muomt", "momt"}
+                or options.method == "all"
+            )
+        )
+    )
+    if want_lct:
+        lct_result = reaction_lct_result(reaction, options.lct_options)
 
     zct_profile = (
         options.tunneling_profile
         if options.tunneling_profile is not None
         else (
             path_tunneling_profile(reaction.path, method="zct")
-            if reaction.path is not None
+            if (reaction.path is not None and lct_result is None)
             else None
         )
     )
     sct_profile = (
         path_tunneling_profile(reaction.path, method="sct")
-        if reaction.path is not None
+        if (reaction.path is not None and lct_result is None)
         else options.tunneling_profile
     )
 
@@ -173,24 +210,35 @@ def calculate_rates(
             )
 
         kappa_zct_val: float | None = None
-        if zct_profile is not None:
-            kappa_zct_val = profile_wkb_kappa(zct_profile, temperature)
-
         kappa_sct_val: float | None = None
-        if sct_profile is not None:
-            kappa_sct_val = profile_wkb_kappa(sct_profile, temperature)
-
+        kappa_lct_val: float | None = None
         kappa_comt_val: float | None = None
-        if kappa_zct_val is not None and kappa_sct_val is not None:
-            kappa_comt_val = max(kappa_zct_val, kappa_sct_val)
-
         kappa_muomt_val: float | None = None
-        if (
-            zct_profile is not None
-            and sct_profile is not None
-            and options.tunneling in {"omt", "comt", "muomt"}
-        ):
-            kappa_muomt_val = profile_muomt_kappa(zct_profile, sct_profile, temperature)
+
+        if lct_result is not None:
+            kappa_zct_val = zct_kappa_from_result(lct_result, temperature)
+            kappa_sct_val = sct_kappa_from_result(lct_result, temperature)
+            kappa_lct_val = lct_kappa_from_result(lct_result, temperature)
+            kappa_comt_val = comt_kappa_from_result(lct_result, temperature)
+            kappa_muomt_val = muomt_kappa_from_result(lct_result, temperature)
+        else:
+            if zct_profile is not None:
+                kappa_zct_val = profile_wkb_kappa(zct_profile, temperature)
+            if sct_profile is not None:
+                kappa_sct_val = profile_wkb_kappa(sct_profile, temperature)
+            if kappa_zct_val is not None and kappa_sct_val is not None:
+                kappa_comt_val = max(kappa_zct_val, kappa_sct_val)
+            if (
+                zct_profile is not None
+                and sct_profile is not None
+                and (
+                    options.tunneling in {"omt", "comt", "muomt", "momt"}
+                    or options.method == "all"
+                )
+            ):
+                kappa_muomt_val = profile_muomt_kappa(
+                    zct_profile, sct_profile, temperature
+                )
 
         kappa_eckart_val: float | None = None
         if options.tunneling == "eckart" or (
@@ -218,6 +266,24 @@ def calculate_rates(
             else 1.0
         ) or 1.0
 
+        k_cvt_zct: float | None = None
+        k_cvt_sct: float | None = None
+        k_cvt_lct: float | None = None
+        k_cvt_comt: float | None = None
+        k_cvt_muomt: float | None = None
+        if k_cvt is not None:
+            cag_cvt_factor = cag_cvt_val if cag_cvt_val is not None else 1.0
+            if kappa_zct_val is not None:
+                k_cvt_zct = k_cvt * cag_cvt_factor * kappa_zct_val
+            if kappa_sct_val is not None:
+                k_cvt_sct = k_cvt * cag_cvt_factor * kappa_sct_val
+            if kappa_lct_val is not None:
+                k_cvt_lct = k_cvt * cag_cvt_factor * kappa_lct_val
+            if kappa_comt_val is not None:
+                k_cvt_comt = k_cvt * cag_cvt_factor * kappa_comt_val
+            if kappa_muomt_val is not None:
+                k_cvt_muomt = k_cvt * cag_cvt_factor * kappa_muomt_val
+
         if options.tunneling == "none":
             kappa = 1.0
         elif options.tunneling == "wigner":
@@ -227,13 +293,16 @@ def calculate_rates(
         elif options.tunneling == "eckart":
             assert kappa_eckart_val is not None
             kappa = kappa_eckart_val
+        elif options.tunneling in {"lct", "lcg3", "lcg4"}:
+            assert kappa_lct_val is not None
+            kappa = cag_active * kappa_lct_val
         elif options.tunneling in {"sct", "cd-scsag"}:
             assert kappa_sct_val is not None
             kappa = cag_active * kappa_sct_val
         elif options.tunneling in {"omt", "comt"}:
             assert kappa_comt_val is not None
             kappa = cag_active * kappa_comt_val
-        elif options.tunneling == "muomt":
+        elif options.tunneling in {"muomt", "momt"}:
             assert kappa_muomt_val is not None
             kappa = cag_active * kappa_muomt_val
         elif options.tunneling in {"zct", "mepsag"}:
@@ -286,9 +355,15 @@ def calculate_rates(
                 kappa_wigner=kappa_wigner_val,
                 kappa_zct=kappa_zct_val,
                 kappa_sct=kappa_sct_val,
+                kappa_lct=kappa_lct_val,
                 kappa_eckart=kappa_eckart_val,
                 kappa_comt=kappa_comt_val,
                 kappa_muomt=kappa_muomt_val,
+                k_cvt_zct=k_cvt_zct,
+                k_cvt_sct=k_cvt_sct,
+                k_cvt_lct=k_cvt_lct,
+                k_cvt_comt=k_cvt_comt,
+                k_cvt_muomt=k_cvt_muomt,
                 equilibrium_kc=kc_si_val,
                 k_reverse_final=k_rev_final,
             )

@@ -23,8 +23,8 @@
 | ZCT / MEPSAG | Implemented | 沿 MEP 振动绝热基态势 $V_a^G(s)$ 的 Kemble 均匀半经典 WKB 与 `BOLTZ` 非经典反射 |
 | SCT / CD-SCSAG | Implemented | 反应路径曲率 $B_{mF}(s)$、`TPCDSC` 离心拐点与位置相关有效质量 $\mu_{\text{eff}}(s)$ 积分 |
 | Eckart 隧穿 | Implemented | 对称与非对称 Eckart 解析透射系数与热平均 |
-| COMT / μOMT | Partial | 仅在 ZCT 与 SCT 候选间逐温度或逐能量择优；由于尚无 LCT 且 $\mu_{\text{eff}}(s) \le \mu$，当前结果恒等于 SCT，**不能**与 Polyrate 的 `CVT/COMT`、`CVT/mOMT` 列等同。待 LCT 实现后升级 |
-| LCT / LCG3 / LCG4 | Planned | 需非绝热区 corner-cutting 几何直线路径与激发振动态求和 |
+| LCT / LCG3 / LCG4 | Implemented | 质量标度直线 corner-cutting 路径、绝热/非绝热边界判定（`LCNWTN`/`LCZCRT`/`LCVCOR`）、LCG4 连续边界延拓（`IZMX`/`LCTV4`）、可及振动激发终态求和（`NSTATE`/`LCSTX`）、振幅积分（`LCSINT`）与有理 Kemble 均匀化（`LCPROB`/`LCGSRT`）；支持显式 `potential_fn` 与纯路径 Shepard 二阶反应路径哈密顿面，与 Polyrate 2023 `clhbrtr1`/`clhbrtr3` 全温区误差 `< 4.5%` |
+| COMT / μOMT | Implemented | 正则最优模式隧穿 $\kappa_{\text{COMT}}(T) = \max(\kappa_{\text{ZCT}}, \kappa_{\text{SCT}}, \kappa_{\text{LCT}})$ 与真正逐能量微正则最优模式隧穿 $P_{\mu\text{OMT}}(E) = \max(P_{\text{ZCT}}(E), P_{\text{SCT}}(E), P_{\text{LCT}}(E))$ 热积分，准确复现 `clhbrtr3` 中低温下 `mOMT > COMT`（误差 `1.6%`） |
 | ICVT | Historical only | Polyrate 2023 已移除 ICVT；仅作为旧版本兼容范围，不计入 2023 必选功能 |
 | μVT / US | Implemented | Beyer–Swinehart 振动态计数与经典转动态和 $N_{\text{rv}}(E, s)$，能量分辨最小通量与统一统计 |
 | Hindered rotor | Implemented | Pitzer–Gwinn 与 Polyrate `BES0` 修正贝塞尔函数扭转内旋转修正 |

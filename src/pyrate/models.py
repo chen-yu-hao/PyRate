@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .constants import DEFAULT_STANDARD_PRESSURE_PA
 from .elements import atomic_mass_amu, canonical_symbol
@@ -273,6 +273,8 @@ class PathPoint:
     dividing_surface: Species
     effective_mass_amu: float | None = None
     curvatures_bohr_inv: tuple[float, ...] = ()
+    tangent_vector: tuple[float, ...] | None = None
+    normal_mode_vectors: tuple[tuple[float, ...], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "coordinate", float(self.coordinate))
@@ -281,6 +283,19 @@ class PathPoint:
                 raise ValueError("effective_mass_amu must be positive")
             object.__setattr__(self, "effective_mass_amu", float(self.effective_mass_amu))
         object.__setattr__(self, "curvatures_bohr_inv", _as_float_tuple(self.curvatures_bohr_inv))
+        if self.tangent_vector is not None:
+            t_vec = _as_float_tuple(self.tangent_vector)
+            if not t_vec:
+                raise ValueError("tangent_vector cannot be empty when provided")
+            object.__setattr__(self, "tangent_vector", t_vec)
+        if self.normal_mode_vectors:
+            vecs = tuple(_as_float_tuple(vec) for vec in self.normal_mode_vectors)
+            dim = len(vecs[0])
+            if dim == 0 or any(len(vec) != dim for vec in vecs):
+                raise ValueError("normal_mode_vectors must have equal non-zero row lengths")
+            object.__setattr__(self, "normal_mode_vectors", vecs)
+        else:
+            object.__setattr__(self, "normal_mode_vectors", ())
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any], index: int) -> "PathPoint":
@@ -294,6 +309,15 @@ class PathPoint:
             ),
             curvatures_bohr_inv=tuple(
                 float(value) for value in data.get("curvatures_bohr_inv", ())
+            ),
+            tangent_vector=(
+                tuple(float(value) for value in data["tangent_vector"])
+                if data.get("tangent_vector") is not None
+                else None
+            ),
+            normal_mode_vectors=tuple(
+                tuple(float(v) for v in row)
+                for row in data.get("normal_mode_vectors", ())
             ),
         )
 
@@ -396,6 +420,100 @@ class Reaction:
         return len(self.reactants)
 
 
+@dataclass(frozen=True, slots=True)
+class LctOptions:
+    """Configuration options for Large-Curvature Tunneling (LCG3 / LCG4).
+
+    ``potential_fn``, when provided, receives an array of Cartesian coordinates
+    in ångström with shape ``(n_atoms, 3)`` and returns the classical electronic
+    potential energy in ``kJ mol^-1`` along off-MEP straight-line tunneling paths.
+    When omitted, PyRate reconstructs a smooth Euclidean Shepard second-order
+    reaction-path Hamiltonian surface directly from the ``ReactionPath`` points.
+    """
+
+    version: int = 4
+    excited_states: str | int = "all"
+    max_states_cap: int = 40
+    energy_segments: int = 1
+    energy_quadrature_points: int = 41
+    theta_quadrature_points: int = 120
+    amplitude_quadrature_points: int = 120
+    vef_search_points: int = 999
+    vad_average: bool = False
+    interpolation_order: int = 4
+    shepard_power: int = 4
+    potential_fn: Callable[[Any], float] | None = field(
+        default=None, compare=False, hash=False
+    )
+
+    def __post_init__(self) -> None:
+        if int(self.version) not in {3, 4}:
+            raise ValueError("LctOptions.version must be 3 (LCG3) or 4 (LCG4)")
+        object.__setattr__(self, "version", int(self.version))
+        if isinstance(self.excited_states, bool):
+            normalized_states: str | int = "all" if self.excited_states else 0
+        elif isinstance(self.excited_states, int):
+            if self.excited_states == -1:
+                normalized_states = "all"
+            elif self.excited_states < 0:
+                raise ValueError("LctOptions.excited_states integer cap cannot be negative")
+            else:
+                normalized_states = int(self.excited_states)
+        else:
+            token = str(self.excited_states).strip().lower()
+            if token in {"all", "allexcit", "-1"}:
+                normalized_states = "all"
+            elif token in {"none", "ground", "noallexcit", "0"}:
+                normalized_states = 0
+            else:
+                val = int(token)
+                if val < 0:
+                    raise ValueError("LctOptions.excited_states integer cap cannot be negative")
+                normalized_states = val
+        object.__setattr__(self, "excited_states", normalized_states)
+        if self.max_states_cap < 0:
+            raise ValueError("max_states_cap cannot be negative")
+        if self.energy_segments <= 0:
+            raise ValueError("energy_segments must be positive")
+        if self.energy_quadrature_points < 4:
+            raise ValueError("energy_quadrature_points must be at least 4")
+        if self.theta_quadrature_points < 4:
+            raise ValueError("theta_quadrature_points must be at least 4")
+        if self.amplitude_quadrature_points < 4:
+            raise ValueError("amplitude_quadrature_points must be at least 4")
+        if self.vef_search_points < 0:
+            raise ValueError("vef_search_points cannot be negative")
+        if self.interpolation_order < 2:
+            raise ValueError("interpolation_order must be at least 2")
+        if self.shepard_power <= 0:
+            raise ValueError("shepard_power must be positive")
+        object.__setattr__(self, "max_states_cap", int(self.max_states_cap))
+        object.__setattr__(self, "energy_segments", int(self.energy_segments))
+        object.__setattr__(self, "energy_quadrature_points", int(self.energy_quadrature_points))
+        object.__setattr__(self, "theta_quadrature_points", int(self.theta_quadrature_points))
+        object.__setattr__(self, "amplitude_quadrature_points", int(self.amplitude_quadrature_points))
+        object.__setattr__(self, "vef_search_points", int(self.vef_search_points))
+        object.__setattr__(self, "vad_average", bool(self.vad_average))
+        object.__setattr__(self, "interpolation_order", int(self.interpolation_order))
+        object.__setattr__(self, "shepard_power", int(self.shepard_power))
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "LctOptions":
+        return cls(
+            version=int(data.get("lcg_version", data.get("version", 4))),
+            excited_states=data.get("excited_states", "all"),
+            max_states_cap=int(data.get("max_states_cap", 40)),
+            energy_segments=int(data.get("energy_segments", 1)),
+            energy_quadrature_points=int(data.get("energy_quadrature_points", 41)),
+            theta_quadrature_points=int(data.get("theta_quadrature_points", 120)),
+            amplitude_quadrature_points=int(data.get("amplitude_quadrature_points", 120)),
+            vef_search_points=int(data.get("vef_search_points", 999)),
+            vad_average=bool(data.get("vad_average", False)),
+            interpolation_order=int(data.get("interpolation_order", 4)),
+            shepard_power=int(data.get("shepard_power", 4)),
+        )
+
+
 _SUPPORTED_METHODS = {"tst", "cvt", "cus", "muvt", "us", "all"}
 _SUPPORTED_TUNNELING = {
     "none",
@@ -405,10 +523,14 @@ _SUPPORTED_TUNNELING = {
     "mepsag",
     "sct",
     "cd-scsag",
+    "lct",
+    "lcg3",
+    "lcg4",
     "eckart",
     "omt",
     "comt",
     "muomt",
+    "momt",
 }
 
 
@@ -421,6 +543,7 @@ class CalculationOptions:
     tunneling: str = "none"
     output_rate_unit: str = "auto"
     tunneling_profile: TunnelingProfile | None = None
+    lct_options: LctOptions = field(default_factory=LctOptions)
 
     def __post_init__(self) -> None:
         temperatures = tuple(float(value) for value in self.temperatures_k)
@@ -436,7 +559,40 @@ class CalculationOptions:
             raise ValueError("output_rate_unit cannot be empty")
         if tunneling == "wkb" and self.tunneling_profile is None:
             raise ValueError("wkb tunneling requires a tunneling profile")
+        lct_opts = self.lct_options
+        if tunneling == "lcg3" and lct_opts.version != 3:
+            lct_opts = LctOptions(
+                version=3,
+                excited_states=lct_opts.excited_states,
+                max_states_cap=lct_opts.max_states_cap,
+                energy_segments=lct_opts.energy_segments,
+                energy_quadrature_points=lct_opts.energy_quadrature_points,
+                theta_quadrature_points=lct_opts.theta_quadrature_points,
+                amplitude_quadrature_points=lct_opts.amplitude_quadrature_points,
+                vef_search_points=lct_opts.vef_search_points,
+                vad_average=lct_opts.vad_average,
+                interpolation_order=lct_opts.interpolation_order,
+                shepard_power=lct_opts.shepard_power,
+                potential_fn=lct_opts.potential_fn,
+            )
+        elif tunneling == "lcg4" and lct_opts.version != 4:
+            lct_opts = LctOptions(
+                version=4,
+                excited_states=lct_opts.excited_states,
+                max_states_cap=lct_opts.max_states_cap,
+                energy_segments=lct_opts.energy_segments,
+                energy_quadrature_points=lct_opts.energy_quadrature_points,
+                theta_quadrature_points=lct_opts.theta_quadrature_points,
+                amplitude_quadrature_points=lct_opts.amplitude_quadrature_points,
+                vef_search_points=lct_opts.vef_search_points,
+                vad_average=lct_opts.vad_average,
+                interpolation_order=lct_opts.interpolation_order,
+                shepard_power=lct_opts.shepard_power,
+                potential_fn=lct_opts.potential_fn,
+            )
         object.__setattr__(self, "temperatures_k", temperatures)
         object.__setattr__(self, "method", method)
         object.__setattr__(self, "tunneling", tunneling)
+        object.__setattr__(self, "lct_options", lct_opts)
+
 

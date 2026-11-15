@@ -471,3 +471,274 @@ def beyer_swinehart(
             density[index] += density[index - step]
     return density
 
+
+def _gauss_legendre_fallback(
+    lower: float, upper: float, n_points: int
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    m = (n_points + 1) // 2
+    xm = 0.5 * (upper + lower)
+    xl = 0.5 * (upper - lower)
+    nodes = [0.0] * n_points
+    weights = [0.0] * n_points
+    for i in range(m):
+        z = math.cos(math.pi * (i + 0.75) / (n_points + 0.5))
+        pp = 0.0
+        for _ in range(64):
+            p1 = 1.0
+            p2 = 0.0
+            for j in range(1, n_points + 1):
+                p3 = p2
+                p2 = p1
+                p1 = ((2.0 * j - 1.0) * z * p2 - (j - 1.0) * p3) / j
+            pp = n_points * (z * p1 - p2) / (z * z - 1.0)
+            z1 = z
+            z = z1 - p1 / pp
+            if abs(z - z1) <= 1.0e-15:
+                break
+        nodes[i] = xm - xl * z
+        nodes[n_points - 1 - i] = xm + xl * z
+        w = 2.0 * abs(xl) / ((1.0 - z * z) * pp * pp)
+        weights[i] = w
+        weights[n_points - 1 - i] = w
+    if lower > upper:
+        nodes.reverse()
+        weights.reverse()
+    return tuple(nodes), tuple(weights)
+
+
+def gauss_legendre_quadrature(
+    lower: float, upper: float, n_points: int
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    if n_points <= 0:
+        raise ValueError("n_points must be positive")
+    if HAS_NATIVE:
+        nodes, weights = _cpp.gauss_legendre_quadrature(
+            float(lower), float(upper), int(n_points)
+        )
+        return tuple(float(v) for v in nodes), tuple(float(v) for v in weights)
+    return _gauss_legendre_fallback(float(lower), float(upper), int(n_points))
+
+
+def _neville_fallback(
+    xa: Sequence[float], ya: Sequence[float], x: float
+) -> float:
+    n = len(xa)
+    if n == 0:
+        return 0.0
+    if n == 1:
+        return float(ya[0])
+    c = [float(v) for v in ya]
+    d = [float(v) for v in ya]
+    ns = 0
+    dif = abs(x - xa[0])
+    for i in range(n):
+        dift = abs(x - xa[i])
+        if dift < dif:
+            ns = i
+            dif = dift
+    y = float(ya[ns])
+    for m in range(1, n):
+        for i in range(n - m):
+            ho = xa[i] - x
+            hp = xa[i + m] - x
+            w = c[i + 1] - d[i]
+            den = ho - hp
+            if abs(den) <= 1.0e-30:
+                d[i] = 0.0
+                c[i] = 0.0
+            else:
+                ratio = w / den
+                d[i] = hp * ratio
+                c[i] = ho * ratio
+        if 2 * ns < (n - m):
+            dy = c[ns]
+        else:
+            ns -= 1
+            dy = d[ns]
+        y += dy
+    return y
+
+
+def neville_interpolate(
+    x_nodes: Sequence[float], y_nodes: Sequence[float], target_x: float
+) -> float:
+    xa = tuple(float(v) for v in x_nodes)
+    ya = tuple(float(v) for v in y_nodes)
+    if len(xa) != len(ya) or not xa:
+        raise ValueError("x_nodes and y_nodes must have matching non-zero length")
+    if HAS_NATIVE:
+        return float(_cpp.neville_interpolate(xa, ya, float(target_x)))
+    return _neville_fallback(xa, ya, float(target_x))
+
+
+def lct_integrate_amplitudes(
+    st: Sequence[float],
+    energies: Sequence[float],
+    sin_chi: Sequence[float],
+    theta: Sequence[float],
+    tau: Sequence[float],
+    reduced_mass: float,
+    ie0_index: int,
+    n_quad: int = 120,
+    poly_order: int = 4,
+) -> tuple[float, ...]:
+    st_vals = tuple(float(v) for v in st)
+    esv_vals = tuple(float(v) for v in energies)
+    sin_vals = tuple(float(v) for v in sin_chi)
+    th_vals = tuple(float(v) for v in theta)
+    tau_vals = tuple(float(v) for v in tau)
+    nemx = len(esv_vals)
+    if (
+        nemx < 2
+        or len(st_vals) != nemx
+        or len(sin_vals) != nemx
+        or len(th_vals) != nemx
+        or len(tau_vals) != nemx
+    ):
+        raise ValueError(
+            "st, energies, sin_chi, theta, and tau must have matching length >= 2"
+        )
+    if reduced_mass <= 0.0 or n_quad <= 0 or poly_order <= 0:
+        raise ValueError("reduced_mass, n_quad, and poly_order must be positive")
+    if HAS_NATIVE:
+        return tuple(
+            float(v)
+            for v in _cpp.lct_integrate_amplitudes(
+                st_vals,
+                esv_vals,
+                sin_vals,
+                th_vals,
+                tau_vals,
+                float(reduced_mass),
+                int(ie0_index),
+                int(n_quad),
+                int(poly_order),
+            )
+        )
+
+    amplitudes = [0.0] * nemx
+    is0 = max(0, int(ie0_index))
+    if is0 + 1 < nemx:
+        avail = nemx - is0
+        nn = min(int(poly_order), avail)
+        for is_idx in range(is0 + 1, nemx - 1):
+            s1 = st_vals[is_idx - 1]
+            s2 = st_vals[is_idx]
+            if abs(s2 - s1) <= 1.0e-15:
+                continue
+            low, high = (s1, s2) if s1 < s2 else (s2, s1)
+            sx, wtx = _gauss_legendre_fallback(low, high, int(n_quad))
+            jj = is_idx - 1
+            nm = nn // 2
+            if jj == is0 or nm == 0:
+                nm = 1
+            if jj + 1 == nemx and nn >= 3:
+                nm = nn - 1
+            jnl = (jj + 1 - nm) if (jj + 1 >= nm) else is0
+            if jnl < is0:
+                jnl = is0
+            if jnl + nn > nemx:
+                jnl = nemx - nn
+            st_sub = st_vals[jnl : jnl + nn]
+            th_sub = th_vals[jnl : jnl + nn]
+            tau_sub = tau_vals[jnl : jnl + nn]
+            esv_sub = esv_vals[jnl : jnl + nn]
+            sin_sub = sin_vals[jnl : jnl + nn]
+            for iq, sxx in enumerate(sx):
+                yth = _neville_fallback(st_sub, th_sub, sxx)
+                yt = _neville_fallback(st_sub, tau_sub, sxx)
+                yv = _neville_fallback(st_sub, esv_sub, sxx)
+                ys = _neville_fallback(st_sub, sin_sub, sxx)
+                if yt <= 0.0 or ys == 0.0:
+                    continue
+                exp_th = _safe_exp(-yth)
+                if exp_th <= 0.0 or not math.isfinite(exp_th):
+                    continue
+                term = wtx[iq] * (ys / yt) * exp_th
+                for ie in range(is_idx, nemx - 1):
+                    vr_sq = 2.0 * (esv_vals[ie] - yv) / reduced_mass
+                    if vr_sq > 0.0:
+                        amplitudes[ie] += term / math.sqrt(vr_sq)
+    return tuple(amplitudes)
+
+
+def lct_uniformize_probabilities(
+    cumulative_primitives: Sequence[Sequence[float]],
+) -> tuple[tuple[tuple[float, ...], ...], tuple[float, ...]]:
+    rows = tuple(tuple(float(v) for v in row) for row in cumulative_primitives)
+    if not rows:
+        raise ValueError("cumulative_primitives must contain at least one state")
+    nemx = len(rows[0])
+    if nemx < 2:
+        raise ValueError("each state row must contain at least 2 entries")
+    if any(len(row) != nemx for row in rows):
+        raise ValueError("all state rows must have equal length")
+    if HAS_NATIVE:
+        unif, sorted_p = _cpp.lct_uniformize_probabilities(rows)
+        return (
+            tuple(tuple(float(v) for v in row) for row in unif),
+            tuple(float(v) for v in sorted_p),
+        )
+
+    nemax = nemx - 1
+    unif_rows: list[tuple[float, ...]] = []
+    sorted_probs = [0.0] * nemax
+    for s_idx, row in enumerate(rows):
+        pvag = row[nemax]
+        out_row = [0.0] * nemx
+        out_row[nemax] = 0.5
+        for j in range(nemax):
+            pixx = row[j]
+            if pixx > 0.0:
+                term = pixx / (1.0 + pixx)
+                if pvag > 1.0e-30:
+                    plc = (1.0 + (1.0 / pvag - 1.0) * pixx / (2.0 * pvag)) * term
+                else:
+                    plc = term
+                out_row[j] = min(1.0, max(0.0, plc))
+            else:
+                out_row[j] = 0.0
+            if s_idx == 0 or out_row[j] > sorted_probs[j]:
+                sorted_probs[j] = out_row[j]
+        unif_rows.append(tuple(out_row))
+    return tuple(unif_rows), tuple(sorted_probs)
+
+
+def thermal_boltz_probabilities_kappa(
+    energies_j: Sequence[float],
+    weights_j: Sequence[float],
+    probabilities: Sequence[float],
+    barrier_j: float,
+    temperature_k: float,
+) -> float:
+    e_vals = tuple(float(v) for v in energies_j)
+    w_vals = tuple(float(v) for v in weights_j)
+    p_vals = tuple(float(v) for v in probabilities)
+    if temperature_k <= 0.0:
+        raise ValueError("temperature must be positive")
+    if len(e_vals) != len(w_vals) or len(e_vals) != len(p_vals):
+        raise ValueError(
+            "energies_j, weights_j, and probabilities must have equal length"
+        )
+    if HAS_NATIVE:
+        return float(
+            _cpp.thermal_boltz_probabilities_kappa(
+                e_vals, w_vals, p_vals, float(barrier_j), float(temperature_k)
+            )
+        )
+    beta = 1.0 / (BOLTZMANN_J_K * temperature_k)
+    total = 0.0
+    for e_val, w_val, p_val in zip(e_vals, w_vals, p_vals):
+        if p_val <= 0.0:
+            continue
+        delta = max(0.0, beta * (barrier_j - e_val))
+        if delta <= 0.0:
+            continue
+        exp_num = _safe_exp(delta + math.log(p_val))
+        if exp_num == 0.0:
+            continue
+        reflection_factor = -math.expm1(-2.0 * delta)
+        total += beta * w_val * exp_num * reflection_factor
+    return 1.0 + total
+
+
