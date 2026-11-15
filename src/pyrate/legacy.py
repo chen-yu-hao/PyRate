@@ -28,7 +28,9 @@ _BLOCK_KEYWORDS = {
     "EXSECOND",
     "SRANGE",
     "QUAD",
+    "QRST",
     "TEMP",
+    "PRVIB",
     "GSPEC",
     "ANALYSIS",
     "SPECIESDATA",
@@ -48,6 +50,9 @@ _BLOCK_KEYWORDS = {
     "3RDDERIV",
     "4THDERIV",
     "SCTOPT",
+    "LCTOPT",
+    "LCTDETAIL",
+    "LCTGRID",
     "EACT",
 }
 
@@ -190,9 +195,60 @@ class LegacyInput:
         for keyword in ("TST", "CVT", "ICVT", "MUVT", "CUS", "US"):
             if rate is not None and rate.has(keyword):
                 methods.append(keyword)
-        for keyword in ("ZCT", "SCT", "LCT", "LCG3", "LCG4"):
-            if tunnel is not None and tunnel.has(keyword):
-                methods.append(keyword)
+        if tunnel is not None:
+            zct_on = False
+            sct_on = False
+            lct_tag: str | None = None
+            comt_on = False
+            muomt_on = False
+            for entry in tunnel.entries:
+                kw = entry.keyword
+                if kw == "ZCT":
+                    zct_on = True
+                elif kw == "NOZCT":
+                    zct_on = False
+                elif kw in {"SCT", "SCTOPT"}:
+                    sct_on = True
+                elif kw == "NOSCT":
+                    sct_on = False
+                elif kw == "LCG3":
+                    lct_tag = "LCG3"
+                elif kw == "LCG4":
+                    lct_tag = "LCG4"
+                elif kw == "LCT":
+                    if lct_tag is None:
+                        lct_tag = "LCT"
+                elif kw == "NOLCT":
+                    lct_tag = None
+                elif kw == "LCTOPT":
+                    lcg_ver: int | None = None
+                    for line in entry.body:
+                        toks = line.split()
+                        if len(toks) >= 2 and toks[0].upper() == "LCGMETHOD":
+                            try:
+                                lcg_ver = int(toks[1])
+                            except ValueError:
+                                pass
+                    if lcg_ver == 3:
+                        lct_tag = "LCG3"
+                    elif lcg_ver == 4:
+                        lct_tag = "LCG4"
+                    elif lct_tag is None:
+                        lct_tag = "LCG4"
+                elif kw in {"COMT", "OMT"}:
+                    comt_on = True
+                elif kw in {"MOMT", "MUOMT"}:
+                    muomt_on = True
+            if zct_on:
+                methods.append("ZCT")
+            if sct_on:
+                methods.append("SCT")
+            if lct_tag is not None:
+                methods.append(lct_tag)
+            if comt_on:
+                methods.append("COMT")
+            if muomt_on:
+                methods.append("MUOMT")
         return tuple(methods)
 
     def compatibility_warnings(self) -> tuple[str, ...]:
@@ -204,18 +260,20 @@ class LegacyInput:
             warnings.append(
                 "parsed but not executable sections: " + ", ".join(unsupported_sections)
             )
+        req = self.requested_methods()
         unsupported_methods = [
-            method
-            for method in self.requested_methods()
-            if method in {"ICVT", "LCT", "LCG3", "LCG4"}
+            method for method in req if method in {"ICVT"}
         ]
         if unsupported_methods:
             warnings.append(
                 "requested methods not implemented in the current solver: "
                 + ", ".join(unsupported_methods)
             )
-        if "SCT" in self.requested_methods() and not self.section_all("POINT40"):
+        has_path = bool(self.section_all("POINT40")) or self.section("PATH") is not None
+        if "SCT" in req and not has_path:
             warnings.append("SCT requires reaction-path curvature or unit40 path data")
+        if any(m in req for m in ("LCT", "LCG3", "LCG4")) and not has_path:
+            warnings.append("LCT requires atomistic reaction-path or unit40 path data")
         if self.section("RATE") is None and self.section("GEN40") is None:
             warnings.append("no *RATE section")
         if not self.temperatures_k and self.section("GEN40") is None:

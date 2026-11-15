@@ -3,21 +3,33 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 from .constants import (
     AMU_KG,
     ANGSTROM_M,
     AVOGADRO_MOL,
     BOHR_ANGSTROM,
-    BOLTZMANN_J_K,
     GAS_CONSTANT_J_MOL_K,
     HBAR_J_S,
     LIGHT_SPEED_M_S,
 )
+from .lct import (
+    LctResult,
+    _prepare_mep,
+    can_compute_lct,
+    comt_kappa_from_result,
+    lct_kappa,
+    lct_kappa_from_result,
+    muomt_kappa_from_result,
+    reaction_lct_result,
+    sct_kappa_from_result,
+    zct_kappa_from_result,
+)
 from .models import Reaction, ReactionPath, Species, TunnelingProfile
 from .native import (
-    eckart_transmission,
     refine_maximum,
+    thermal_boltz_probabilities_kappa,
     thermal_eckart_kappa,
     thermal_wkb_kappa,
     thermal_wkb_profile_kappa,
@@ -150,8 +162,31 @@ def _compute_cdscsag_effective_masses_amu(path: ReactionPath) -> tuple[float, ..
     mu_kg = mu_0 * AMU_KG
     bohr_m = BOHR_ANGSTROM * ANGSTROM_M
 
-    for point in path.points:
-        curvatures = point.curvatures_bohr_inv
+    fallback_bcur: tuple[tuple[float, ...], ...] | None = None
+    atom_counts = [len(pt.dividing_surface.atoms) for pt in path.points]
+    if (
+        any(not pt.curvatures_bohr_inv for pt in path.points)
+        and all(count >= 2 for count in atom_counts)
+        and len(set(atom_counts)) == 1
+        and any(len(pt.dividing_surface.positive_frequencies_cm1) > 0 for pt in path.points)
+    ):
+        synth_rxn = Reaction(
+            reactants=(path.points[0].dividing_surface,),
+            transition_state=path.points[len(path.points) // 2].dividing_surface,
+            products=(path.points[-1].dividing_surface,),
+            path=path,
+        )
+        mep = _prepare_mep(synth_rxn)
+        fallback_bcur = tuple(
+            tuple(float(val) for val in mep.bcur[idx]) for idx in range(len(path.points))
+        )
+
+    for pt_idx, point in enumerate(path.points):
+        curvatures = (
+            point.curvatures_bohr_inv
+            if point.curvatures_bohr_inv
+            else (fallback_bcur[pt_idx] if fallback_bcur is not None else ())
+        )
         freqs = point.dividing_surface.positive_frequencies_cm1
         if not curvatures or not freqs:
             turning_points_bohr.append(0.0)
@@ -316,8 +351,10 @@ def profile_muomt_kappa(
     zct_profile: TunnelingProfile,
     sct_profile: TunnelingProfile,
     temperature_k: float,
+    *,
+    lct_probabilities: Sequence[float] | None = None,
 ) -> float:
-    """Return microcanonical OMT (muOMT) transmission factor integrating max(P_ZCT(E), P_SCT(E))."""
+    """Return microcanonical OMT (muOMT) transmission factor on 1D barrier profiles."""
 
     energies_kj = zct_profile.energies_kj_mol
     threshold_kj = max(energies_kj[0], energies_kj[-1])
@@ -327,20 +364,50 @@ def profile_muomt_kappa(
         return 1.0
     count = zct_profile.energy_grid_points + zct_profile.energy_grid_points % 2
     step_kj = vm_kj / count
-    rt_kj = GAS_CONSTANT_J_MOL_K * temperature_k / 1000.0
-    beta_kj = 1.0 / rt_kj
+    scale_j = 1000.0 / AVOGADRO_MOL
 
-    def integrand(energy_kj: float) -> float:
-        p_zct = profile_transmission_probability(zct_profile, energy_kj)
-        p_sct = profile_transmission_probability(sct_profile, energy_kj)
-        p_max = max(p_zct, p_sct)
-        delta = max(0.0, beta_kj * (vmax_kj - energy_kj))
-        if delta == 0.0 or p_max <= 0.0:
-            return 0.0
-        return beta_kj * p_max * 2.0 * math.sinh(min(delta, 700.0))
+    grid_e_j: list[float] = []
+    grid_w_j: list[float] = []
+    grid_p: list[float] = []
+    if lct_probabilities is not None and len(lct_probabilities) != count + 1:
+        raise ValueError(
+            f"lct_probabilities length ({len(lct_probabilities)}) "
+            f"must match Simpson grid ({count + 1})"
+        )
+    for idx in range(count + 1):
+        e_kj = threshold_kj + idx * step_kj
+        simpson_mult = 1.0 if (idx == 0 or idx == count) else (2.0 if idx % 2 == 0 else 4.0)
+        w_kj = (step_kj / 3.0) * simpson_mult
+        p_zct = profile_transmission_probability(zct_profile, e_kj)
+        p_sct = profile_transmission_probability(sct_profile, e_kj)
+        p_lct = float(lct_probabilities[idx]) if lct_probabilities is not None else 0.0
+        grid_e_j.append(e_kj * scale_j)
+        grid_w_j.append(w_kj * scale_j)
+        grid_p.append(max(p_zct, p_sct, p_lct))
 
-    total = integrand(threshold_kj) + integrand(vmax_kj)
-    for idx in range(1, count):
-        total += (2.0 if idx % 2 == 0 else 4.0) * integrand(threshold_kj + idx * step_kj)
-    return 1.0 + step_kj * total / 3.0
+    return thermal_boltz_probabilities_kappa(
+        grid_e_j, grid_w_j, grid_p, vmax_kj * scale_j, temperature_k
+    )
+
+
+__all__ = [
+    "LctResult",
+    "cag_kappa",
+    "can_compute_lct",
+    "comt_kappa_from_result",
+    "lct_kappa",
+    "lct_kappa_from_result",
+    "muomt_kappa_from_result",
+    "path_adiabatic_ground_potentials_kj_mol",
+    "path_tunneling_profile",
+    "profile_muomt_kappa",
+    "profile_transmission_probability",
+    "profile_wkb_kappa",
+    "reaction_eckart_kappa",
+    "reaction_lct_result",
+    "sct_kappa_from_result",
+    "transition_state_wigner_kappa",
+    "zct_kappa_from_result",
+]
+
 

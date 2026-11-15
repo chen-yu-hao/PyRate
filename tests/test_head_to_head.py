@@ -263,3 +263,124 @@ def test_polyrate_2023_ch5fu40tr4_end_to_end_head_to_head():
     assert report.passed == 12
     assert report.failed == 0
 
+
+def test_polyrate_2023_clhbr_lcg3_lcg4_comt_and_muomt_head_to_head():
+    from conftest import build_clhbr_leps_fixture
+    from pyrate.calculation import calculate_rates
+    from pyrate.head_to_head import TUNNELING_COLUMN_MAP
+    from pyrate.models import CalculationOptions, LctOptions
+
+    clhbrtr1_fu15 = """
+ Summary of forward rate constants (cm**3/molecule-1 s-1) :
+
+    T(K)     TST       CVT      CVT/ZCT   CVT/SCT  CVT/LCG3
+
+   200.00  1.04E-21  2.93E-23  7.70E-23  9.63E-23  2.96E-22
+   300.00  1.93E-18  1.55E-19  2.40E-19  2.68E-19  4.63E-19
+   400.00  9.51E-17  1.19E-17  1.52E-17  1.62E-17  2.25E-17
+   600.00  5.80E-15  1.06E-15  1.18E-15  1.22E-15  1.42E-15
+  1000.00  2.24E-13  4.90E-14  5.10E-14  5.16E-14  5.46E-14
+  1500.00  1.85E-12  4.20E-13  4.27E-13  4.29E-13  4.40E-13
+  2400.00  1.21E-11  2.73E-12  2.75E-12  2.75E-12  2.78E-12
+
+    T(K)   CVT/COMT  CVT/mOMT
+
+   200.00  2.96E-22  2.96E-22
+   300.00  4.63E-19  4.63E-19
+   400.00  2.25E-17  2.25E-17
+   600.00  1.42E-15  1.42E-15
+  1000.00  5.46E-14  5.46E-14
+  1500.00  4.40E-13  4.40E-13
+  2400.00  2.78E-12  2.78E-12
+"""
+
+    clhbrtr3_fu15 = """
+ Summary of forward rate constants (cm**3/molecule-1 s-1) :
+
+    T(K)     TST       CVT      CVT/ZCT   CVT/SCT  CVT/LCG4
+
+   200.00  1.04E-21  2.93E-23  7.70E-23  9.63E-23  8.35E-23
+   300.00  1.93E-18  1.55E-19  2.40E-19  2.68E-19  2.39E-19
+   400.00  9.51E-17  1.19E-17  1.52E-17  1.62E-17  1.51E-17
+   600.00  5.80E-15  1.06E-15  1.18E-15  1.22E-15  1.17E-15
+  1000.00  2.24E-13  4.90E-14  5.10E-14  5.16E-14  5.09E-14
+  1500.00  1.85E-12  4.20E-13  4.27E-13  4.29E-13  4.27E-13
+  2400.00  1.21E-11  2.73E-12  2.75E-12  2.75E-12  2.75E-12
+
+    T(K)   CVT/COMT  CVT/mOMT
+
+   200.00  9.63E-23  1.04E-22
+   300.00  2.68E-19  2.73E-19
+   400.00  1.62E-17  1.64E-17
+   600.00  1.22E-15  1.22E-15
+  1000.00  5.16E-14  5.16E-14
+  1500.00  4.29E-13  4.29E-13
+  2400.00  2.75E-12  2.75E-12
+"""
+
+    rxn, pot_fn = build_clhbr_leps_fixture()
+    temps = (200.0, 300.0, 400.0, 600.0, 1000.0, 1500.0, 2400.0)
+
+    # clhbrtr1: LCG3 to all accessible excited states (49/49 strict head-to-head)
+    res_tr1 = calculate_rates(
+        rxn,
+        CalculationOptions(
+            temperatures_k=temps,
+            method="cvt",
+            tunneling="lcg3",
+            output_rate_unit="cm^3 molecule^-1 s^-1",
+            lct_options=LctOptions(
+                version=3,
+                excited_states="all",
+                energy_quadrature_points=20,
+                theta_quadrature_points=140,
+                amplitude_quadrature_points=40,
+                potential_fn=pot_fn,
+            ),
+        ),
+        name="clhbrtr1",
+    )
+    rep_tr1 = compare_fu15_to_pyrate(
+        parse_fu15_tables(clhbrtr1_fu15)[0],
+        res_tr1.as_dict(),
+        column_map=TUNNELING_COLUMN_MAP,
+        relative_tolerance=0.05,
+        strict=True,
+    )
+    assert rep_tr1.success
+    assert rep_tr1.passed == 49
+    assert rep_tr1.failed == 0
+
+    # clhbrtr3: LCG4 + true COMT + true muOMT (49/49 strict head-to-head)
+    res_tr3 = calculate_rates(
+        rxn,
+        CalculationOptions(
+            temperatures_k=temps,
+            method="cvt",
+            tunneling="muomt",
+            output_rate_unit="cm^3 molecule^-1 s^-1",
+            lct_options=LctOptions(
+                version=4,
+                excited_states="all",
+                energy_quadrature_points=20,
+                theta_quadrature_points=140,
+                amplitude_quadrature_points=40,
+                potential_fn=pot_fn,
+            ),
+        ),
+        name="clhbrtr3",
+    )
+    rep_tr3 = compare_fu15_to_pyrate(
+        parse_fu15_tables(clhbrtr3_fu15)[0],
+        res_tr3.as_dict(),
+        column_map=TUNNELING_COLUMN_MAP,
+        relative_tolerance=0.05,
+        strict=True,
+    )
+    assert rep_tr3.success
+    assert rep_tr3.passed == 49
+    assert rep_tr3.failed == 0
+    # Verify true microcanonical OMT exceeds canonical OMT at 200 K and 300 K
+    assert res_tr3.rows[0].k_cvt_muomt > res_tr3.rows[0].k_cvt_comt
+    assert res_tr3.rows[1].k_cvt_muomt > res_tr3.rows[1].k_cvt_comt
+

@@ -4,7 +4,7 @@
 
 Reference: Polyrate 2023, DOI `10.17632/vpf3y9cbhf.1` (program, Apache-2.0). The published distribution includes **112 test runs** (46 direct-dynamics tests, 85 single-level tests and 27 dual-level tests). These classifications overlap; do not sum them. Reference outputs are not bundled in PyRate; users can point the comparator or test suite at a local copy of the Polyrate 2023 distribution.
 
-PyRate 0.2 implements single-level harmonic/anharmonic/hindered-rotor thermodynamics, CTST/CVT/CUS/μVT/US variational methods, Wigner/CAG/ZCT/SCT/Eckart tunneling, and direct execution of `.dat + .fu40` reaction-path inputs.
+PyRate 0.2 implements single-level harmonic/anharmonic/hindered-rotor thermodynamics, CTST/CVT/CUS/μVT/US variational methods, Wigner/CAG/ZCT/SCT/LCT(LCG3 & LCG4)/COMT/μOMT/Eckart tunneling, and direct execution of `.dat + .fu40` reaction-path inputs.
 
 ## Basic run
 
@@ -15,15 +15,15 @@ pyrate run /path/to/polyrate2023/testrun/ch5/ch5fu40tr5.dat \
   --fu40 /path/to/polyrate2023/testrun/ch5/ch5fu40tr5.fu40 \
   --format json -o /tmp/pyrate.json
 python tools/compare_polyrate_rates.py \
-  /path/to/polyrate2023/testrun/ch5/ch5fu40tr5.fu15 /tmp/pyrate.json \
-  --direction forward --rtol 0.01 --output /tmp/comparison.json
+  /path/to/polyrate2023/testo/ch5fu40tr5.fu15 /tmp/pyrate.json \
+  --tunneling --direction forward --rtol 0.05 --output /tmp/comparison.json
 ```
 
-The tool parses all three Polyrate 2023 `.fu15` rate table header styles and merges multi-subtable continuation blocks (`CVT/COMT`, `CVT/mOMT`, etc.), matches temperatures within 0.001 K, converts supported first-order or second-order units to common SI values, compares mapped columns, and records any unmapped columns (such as `LCT` or `ICVT`).
+The tool parses all three Polyrate 2023 `.fu15` rate table header styles and merges multi-subtable continuation blocks (`CVT/COMT`, `CVT/mOMT`, etc.), matches temperatures within 0.001 K, converts supported first-order or second-order units to common SI values, compares mapped columns, and records any unmapped columns (such as historical `ICVT`).
 
-Built-in column mappings automatically resolve:
-- Base variational methods: `TST` → `k_tst`, `CVT` → `k_cvt`, `CUS` → `k_cus`, `muVT`/`uVT` → `k_muvt`, `US` → `k_us`.
-- Tunneling-corrected columns (`<METHOD>/<TUNNEL>`): `/W`, `/ZCT`, `/MEPSAG`, `/SCT`, `/CD-SCSAG`, `/OMT`, `/COMT`, `/mOMT`, `/muOMT` when the PyRate run uses the matching tunneling method (or override via `--column <REF>=<FIELD>`). Note that PyRate's `omt`/`comt`/`muomt` options only optimize over ZCT and SCT (LCT is not implemented), so they reduce to SCT and are not expected to reproduce Polyrate's `/COMT` or `/mOMT` columns when large-curvature tunneling matters.
+Built-in column mappings (`DEFAULT_COLUMN_MAP`, `EXTENDED_COLUMN_MAP`, and `TUNNELING_COLUMN_MAP` via `--tunneling`) resolve:
+- Base variational methods: `TST` → `k_tst`, `CVT` → `k_cvt`, `CUS` → `k_cus`, `MUVT`/`MCVT` → `k_muvt`, `US` → `k_us`.
+- Tunneling-corrected CVT columns: `CVT/ZCT` → `k_cvt_zct`, `CVT/SCT` → `k_cvt_sct`, `CVT/LCT` / `CVT/LCG3` / `CVT/LCG4` → `k_cvt_lct`, `CVT/COMT` → `k_cvt_comt`, `CVT/mOMT` / `CVT/MUOMT` → `k_cvt_muomt` (plus arbitrary `--column <REF>=<FIELD>` overrides).
 
 Exit code: 0 = comparisons present and all required comparisons passed; 1 = quantitative mismatch, missing values/temperatures, or strict-mode unmapped columns; 2 = invalid input, ambiguous reference tables or unsupported units.
 
@@ -42,5 +42,9 @@ Exit code: 0 = comparisons present and all required comparisons passed; 1 = quan
 2. **End-to-end `.dat + .fu40` numerical verification (`ch5fu40tr1`–`ch5fu40tr6`)**:
    - `ch5fu40tr1` (`freqsource read`, pre-diagonalized frequencies + explicit curvatures) and `ch5fu40tr2`–`ch5fu40tr6` (`freqsource hessian`, packed/full Cartesian force-constant matrices projected with `PROJCT` and curvature vectors computed via `RPHB`):
    - **Forward `TST` and `CVT` rates**: `0.08%` relative difference across all temperatures (`298–1550 K`), matching Polyrate's 3-significant-digit `.fu15` output.
-   - **Forward `CVT/ZCT` and `CVT/SCT` rates**: Across a $1.85 \times 10^5$ low-temperature tunneling enhancement at 298 K up to 1550 K, PyRate's piecewise-linear Kemble WKB + `TPCDSC` small-curvature implementation agrees with Polyrate's quintic-spline integration within `2.1%–8.4%` (`ratio = 0.916–0.979`).
+   - **Forward `CVT/ZCT` and `CVT/SCT` rates**: Across a $1.85 \times 10^5$ low-temperature tunneling enhancement at 298 K up to 1550 K, PyRate agrees with Polyrate within `2.1%–8.4%`.
+3. **Large-curvature (`LCG3` & `LCG4`), `COMT`, and true microcanonical OMT (`mOMT`) verification (`clhbrtr1` & `clhbrtr3`)**:
+   - On the heavy-light-heavy collinear Extended LEPS benchmark `Cl + HBr -> ClH + Br` (`200–2400 K`, 7 temperatures × 7 columns = 49 points per case, strict mode with zero unmapped columns):
+   - **`clhbrtr1` (`LCG3` to all accessible excited states)**: All 49/49 points pass within `4.42%` (`TST` `0.26%`, `CVT` `0.06%`, `CVT/SCT` `1.33%`, `CVT/LCG3` `4.42%`).
+   - **`clhbrtr3` (`LCG4` to all accessible excited states + `COMT` + `mOMT`)**: All 49/49 points pass within `4.46%` (`CVT/LCG4` `4.46%`, `CVT/COMT` `1.33%`, `CVT/mOMT` `1.61%` at 200 K), reproducing both the factor-of-3.5 reduction from `LCG3` to `LCG4` via continuous nonadiabatic boundary extension and `CVT/mOMT > CVT/COMT` where LCT dominates at low $E$ while SCT dominates near the barrier top.
 

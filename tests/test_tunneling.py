@@ -122,3 +122,123 @@ def test_cag_and_reaction_eckart_kappa() -> None:
     eck = reaction_eckart_kappa(rxn, 300.0)
     assert eck > 1.0
 
+
+def test_lcg3_lcg4_excited_states_and_true_muomt_exceeds_comt() -> None:
+    from conftest import build_clhbr_leps_fixture
+
+    from pyrate.calculation import calculate_rates
+    from pyrate.lct import (
+        can_compute_lct,
+        comt_kappa_from_result,
+        lct_kappa_from_result,
+        muomt_kappa_from_result,
+        reaction_lct_result,
+    )
+    from pyrate.models import CalculationOptions, LctOptions
+
+    rxn, pot_fn = build_clhbr_leps_fixture()
+    assert can_compute_lct(rxn)
+
+    # 1. Compare LCG3 vs LCG4 and excited-state caps on heavy-light-heavy Cl + HBr
+    lcg3_all = reaction_lct_result(
+        rxn,
+        LctOptions(
+            version=3,
+            excited_states="all",
+            energy_quadrature_points=20,
+            theta_quadrature_points=100,
+            amplitude_quadrature_points=40,
+            potential_fn=pot_fn,
+        ),
+    )
+    lcg3_ground = reaction_lct_result(
+        rxn,
+        LctOptions(
+            version=3,
+            excited_states=0,
+            energy_quadrature_points=20,
+            theta_quadrature_points=100,
+            amplitude_quadrature_points=40,
+            potential_fn=pot_fn,
+        ),
+    )
+    lcg4_all = reaction_lct_result(
+        rxn,
+        LctOptions(
+            version=4,
+            excited_states="all",
+            energy_quadrature_points=20,
+            theta_quadrature_points=100,
+            amplitude_quadrature_points=40,
+            potential_fn=pot_fn,
+        ),
+    )
+
+    assert lcg3_all.max_excited_state >= 1
+    assert lcg3_ground.max_excited_state == 0
+    assert lct_kappa_from_result(lcg3_all, 200.0) > lct_kappa_from_result(lcg3_ground, 200.0)
+    # LCG4 continuous nonadiabatic boundary eliminates LCG3's low-T overestimation on Cl + HBr
+    assert lct_kappa_from_result(lcg3_all, 200.0) > 2.5 * lct_kappa_from_result(lcg4_all, 200.0)
+
+    # 2. True microcanonical OMT strictly exceeds canonical OMT when LCT dominates at low E
+    #    and SCT dominates closer to the barrier top (Cl + HBr with LCG4 at 200-300 K!)
+    assert any(
+        pl > ps and pl > pz
+        for pz, ps, pl in zip(
+            lcg4_all.probabilities_zct,
+            lcg4_all.probabilities_sct,
+            lcg4_all.probabilities_lct,
+            strict=True,
+        )
+    )
+    assert any(
+        ps > pl and ps > pz
+        for pz, ps, pl in zip(
+            lcg4_all.probabilities_zct,
+            lcg4_all.probabilities_sct,
+            lcg4_all.probabilities_lct,
+            strict=True,
+        )
+    )
+    kap_comt_200 = comt_kappa_from_result(lcg4_all, 200.0)
+    kap_muomt_200 = muomt_kappa_from_result(lcg4_all, 200.0)
+    assert kap_muomt_200 > kap_comt_200 * 1.05
+
+    # 3. End-to-end calculate_rates in path-only Shepard mode (potential_fn=None) AND
+    #    pure geometry-only mode (no explicit tangents, normal_mode_vectors, or curvatures)
+    stripped_points = tuple(
+        PathPoint(coordinate=pt.coordinate, dividing_surface=pt.dividing_surface)
+        for pt in rxn.path.points[::4]  # sparser 0.04 bohr grid without explicit vectors
+    )
+    rxn_geom_only = Reaction(
+        reactants=rxn.reactants,
+        transition_state=rxn.transition_state,
+        products=rxn.products,
+        path=ReactionPath(
+            points=stripped_points,
+            coordinate_unit="bohr",
+            reduced_mass_amu=rxn.path.reduced_mass_amu,
+        ),
+    )
+    calc_shep = calculate_rates(
+        rxn_geom_only,
+        CalculationOptions(
+            temperatures_k=(200.0, 300.0),
+            method="cvt",
+            tunneling="muomt",
+            lct_options=LctOptions(
+                version=4,
+                energy_quadrature_points=16,
+                theta_quadrature_points=40,
+                amplitude_quadrature_points=24,
+                potential_fn=None,
+            ),
+        ),
+    )
+    row200 = calc_shep.rows[0]
+    assert row200.kappa_lct is not None and row200.kappa_lct > 1.5
+    assert row200.kappa_sct is not None and row200.kappa_zct is not None
+    assert row200.kappa_sct > row200.kappa_zct > 1.0
+    assert row200.kappa_comt == max(row200.kappa_zct, row200.kappa_sct, row200.kappa_lct)
+    assert row200.kappa_muomt is not None and row200.kappa_muomt >= row200.kappa_comt - 1.0e-12
+

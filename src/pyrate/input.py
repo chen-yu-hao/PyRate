@@ -29,6 +29,7 @@ from .models import (
     Atom,
     CalculationOptions,
     ElectronicState,
+    LctOptions,
     PathPoint,
     Reaction,
     ReactionPath,
@@ -167,6 +168,12 @@ def parse_toml_data(
         tunneling_profile = TunnelingProfile.from_mapping(
             _mapping(profile_data, "tunneling.profile")
         )
+    lct_subtable = tunneling_table.get("lct", tunneling_table)
+    lct_options = (
+        LctOptions.from_mapping(_mapping(lct_subtable, "tunneling.lct"))
+        if tunneling_table
+        else LctOptions()
+    )
 
     options = CalculationOptions(
         temperatures_k=tuple(float(value) for value in temperatures),
@@ -174,6 +181,7 @@ def parse_toml_data(
         tunneling=tunneling_method,
         output_rate_unit=str(calculation.get("rate_unit", "auto")),
         tunneling_profile=tunneling_profile,
+        lct_options=lct_options,
     )
     return LoadedCalculation(
         name=name, reaction=reaction, options=options, raw=data, source=source
@@ -562,6 +570,74 @@ def legacy_to_calculation(
             raw_points.append((s_bohr, pt_species, y_vec, cof_mat, explicit_bfs))
 
         raw_points.sort(key=lambda item: item[0])
+
+        # Synthesize s = 0 from *SADDLE40 when absent from *POINT40
+        if not any(abs(item[0]) <= 1.0e-12 for item in raw_points):
+            saddle_sec = fu40_document.section("SADDLE40")
+            ts_y_vec: np.ndarray | None = None
+            ts_cof_mat: np.ndarray | None = None
+            if (
+                saddle_sec is not None
+                and saddle_sec.get("HESSIAN") is not None
+                and freqsource != "READ"
+            ):
+                hess0 = _unpack_fu40_hessian(saddle_sec, dim_total, hessform=hessform)
+                masses_amu0 = np.asarray([atom.mass_amu for atom in ts.atoms], dtype=float)
+                masses_kg0 = masses_amu0 * AMU_KG
+                coord_masses_kg0 = np.repeat(masses_kg0, 3)
+                mw_hess0 = (hess0 * HARTREE_J / BOHR_M**2) / np.sqrt(
+                    coord_masses_kg0[:, None] * coord_masses_kg0[None, :]
+                )
+                coords_m0 = (
+                    np.asarray(
+                        [(a.x_angstrom, a.y_angstrom, a.z_angstrom) for a in ts.atoms],
+                        dtype=float,
+                    )
+                    * ANGSTROM_M
+                )
+                basis0, _ = _rigid_basis(masses_kg0, coords_m0)
+                proj0 = np.eye(dim_total) - basis0 @ basis0.T
+                proj_h0 = 0.5 * (proj0.T @ mw_hess0 @ proj0 + (proj0.T @ mw_hess0 @ proj0).T)
+                evals0, evecs0 = np.linalg.eigh(proj_h0)
+                min_idx0 = int(np.argmin(evals0))
+                cand_y = evecs0[:, min_idx0].copy()
+                # Orient imaginary mode along +s using neighboring point tangents or geometries
+                ref_y: np.ndarray | None = None
+                for s_nb, _, y_nb, _, _ in raw_points:
+                    if y_nb is not None and (ref_y is None or abs(s_nb) < 0.5):
+                        ref_y = y_nb
+                        if s_nb > 0.0:
+                            break
+                if ref_y is not None and float(np.dot(cand_y, ref_y)) < 0.0:
+                    cand_y = -cand_y
+                ts_y_vec = cand_y
+                rem_mask = np.ones(len(evals0), dtype=bool)
+                rem_mask[min_idx0] = False
+                rem_indices = np.flatnonzero(rem_mask)
+                rem_order = np.argsort(np.abs(evals0[rem_indices]))
+                top0 = rem_indices[rem_order[-n_vib_path:]]
+                desc0 = top0[np.argsort(evals0[top0])[::-1]]
+                ts_cof_mat = evecs0[:, desc0]
+            raw_points.append((0.0, ts, ts_y_vec, ts_cof_mat, ()))
+            raw_points.sort(key=lambda item: item[0])
+
+        # Phase-align normal-mode columns continuously along s
+        aligned_points: list[
+            tuple[float, Species, np.ndarray | None, np.ndarray | None, tuple[float, ...]]
+        ] = []
+        prev_cof: np.ndarray | None = None
+        for s_bohr, pt_species, y_vec, cof_mat, explicit_bfs in raw_points:
+            if cof_mat is not None:
+                cof_work = cof_mat.copy()
+                if prev_cof is not None and prev_cof.shape == cof_work.shape:
+                    for m in range(cof_work.shape[1]):
+                        if float(np.dot(prev_cof[:, m], cof_work[:, m])) < 0.0:
+                            cof_work[:, m] = -cof_work[:, m]
+                prev_cof = cof_work
+                cof_mat = cof_work
+            aligned_points.append((s_bohr, pt_species, y_vec, cof_mat, explicit_bfs))
+        raw_points = aligned_points
+
         have_rphb = all(item[2] is not None and item[3] is not None for item in raw_points)
         dyds: np.ndarray | None = None
         if have_rphb and len(raw_points) >= 3:
@@ -570,7 +646,7 @@ def legacy_to_calculation(
             dyds = np.gradient(y_arr, s_arr, axis=0)
 
         path_points: list[PathPoint] = []
-        for idx, (s_bohr, pt_species, _, cof_mat, explicit_bfs) in enumerate(raw_points):
+        for idx, (s_bohr, pt_species, y_vec, cof_mat, explicit_bfs) in enumerate(raw_points):
             if explicit_bfs:
                 curvatures = explicit_bfs
             elif dyds is not None and cof_mat is not None:
@@ -581,36 +657,49 @@ def legacy_to_calculation(
                 )
             else:
                 curvatures = ()
+            tangent_tuple = (
+                tuple(float(v) for v in y_vec) if y_vec is not None else None
+            )
+            nm_tuples = (
+                tuple(
+                    tuple(float(v) for v in cof_mat[:, mode_idx])
+                    for mode_idx in range(cof_mat.shape[1])
+                )
+                if cof_mat is not None
+                else ()
+            )
             path_points.append(
                 PathPoint(
                     coordinate=s_bohr,
                     dividing_surface=pt_species,
                     curvatures_bohr_inv=curvatures,
+                    tangent_vector=tangent_tuple,
+                    normal_mode_vectors=nm_tuples,
                 )
             )
 
-        if not any(abs(pt.coordinate) <= 1.0e-12 for pt in path_points):
-            path_points.append(
-                PathPoint(
-                    coordinate=0.0,
-                    dividing_surface=ts,
-                    curvatures_bohr_inv=tuple(0.0 for _ in range(n_vib_path)),
-                )
-            )
-            path_points.sort(key=lambda pt: pt.coordinate)
-            idx0 = next(i for i, pt in enumerate(path_points) if pt.coordinate == 0.0)
-            if 0 < idx0 < len(path_points) - 1:
-                left_b = path_points[idx0 - 1].curvatures_bohr_inv
-                right_b = path_points[idx0 + 1].curvatures_bohr_inv
+        idx0_list = [i for i, pt in enumerate(path_points) if abs(pt.coordinate) <= 1.0e-12]
+        if idx0_list:
+            idx0 = idx0_list[0]
+            if not path_points[idx0].curvatures_bohr_inv and 0 < idx0 < len(path_points) - 1:
+                left_pt = path_points[idx0 - 1]
+                right_pt = path_points[idx0 + 1]
+                left_b = left_pt.curvatures_bohr_inv
+                right_b = right_pt.curvatures_bohr_inv
                 if left_b and len(left_b) == len(right_b):
+                    span = right_pt.coordinate - left_pt.coordinate
+                    w_r = (0.0 - left_pt.coordinate) / span if span > 0.0 else 0.5
+                    w_l = 1.0 - w_r
                     interp_b = tuple(
-                        0.5 * (abs(left_b[m]) + abs(right_b[m]))
+                        w_l * left_b[m] + w_r * right_b[m]
                         for m in range(len(left_b))
                     )
                     path_points[idx0] = PathPoint(
                         coordinate=0.0,
-                        dividing_surface=ts,
+                        dividing_surface=path_points[idx0].dividing_surface,
                         curvatures_bohr_inv=interp_b,
+                        tangent_vector=path_points[idx0].tangent_vector,
+                        normal_mode_vectors=path_points[idx0].normal_mode_vectors,
                     )
 
         path_model = ReactionPath(
@@ -618,6 +707,76 @@ def legacy_to_calculation(
             coordinate_unit="bohr",
             reduced_mass_amu=reduced_mass_amu,
         )
+
+    # Parse *TUNNEL options (LCTOPT, QUAD, EXCITED / ALLEXCIT / NOALLEXCIT)
+    lcg_version = 4
+    excited_states: str | int = "all"
+    energy_segments = 1
+    energy_quad_pts = 41
+    theta_quad_pts = 120
+    amp_quad_pts = 120
+    vef_search_pts = 999
+    vad_avg = False
+    interp_order = 4
+    wigner_requested = False
+
+    tunnel_sec = document.section("TUNNEL")
+    if tunnel_sec is not None:
+        for entry in tunnel_sec.entries:
+            kw = entry.keyword
+            if kw == "WIGNER":
+                wigner_requested = True
+            elif kw == "LCG3":
+                lcg_version = 3
+            elif kw == "LCG4":
+                lcg_version = 4
+            elif kw == "ALLEXCIT":
+                excited_states = "all"
+            elif kw == "NOALLEXCIT":
+                excited_states = 0
+            elif kw == "EXCITED" and entry.arguments:
+                excited_states = int(_fortran_float(entry.arguments[0]))
+            elif kw == "QUAD":
+                for line in entry.body:
+                    toks = line.split()
+                    if len(toks) >= 2:
+                        sub = toks[0].upper()
+                        if sub == "NQE":
+                            energy_quad_pts = int(_fortran_float(toks[1]))
+                        elif sub == "NSEGBOLTZ":
+                            energy_segments = int(_fortran_float(toks[1]))
+            elif kw == "LCTOPT":
+                for line in entry.body:
+                    toks = line.split()
+                    if not toks:
+                        continue
+                    sub = toks[0].upper()
+                    if sub == "LCGMETHOD" and len(toks) >= 2:
+                        lcg_version = int(_fortran_float(toks[1]))
+                    elif sub == "NGTHETA" and len(toks) >= 2:
+                        theta_quad_pts = int(_fortran_float(toks[1]))
+                    elif sub == "NGAMP" and len(toks) >= 2:
+                        amp_quad_pts = int(_fortran_float(toks[1]))
+                    elif sub == "VEFSRCH" and len(toks) >= 2:
+                        vef_search_pts = int(_fortran_float(toks[1]))
+                    elif sub == "INTERPOLATE" and len(toks) >= 2:
+                        interp_order = int(_fortran_float(toks[1]))
+                    elif sub == "VADAVG":
+                        vad_avg = True
+                    elif sub == "NOVADAVG":
+                        vad_avg = False
+
+    lct_options = LctOptions(
+        version=lcg_version,
+        excited_states=excited_states,
+        energy_segments=energy_segments,
+        energy_quadrature_points=energy_quad_pts,
+        theta_quadrature_points=theta_quad_pts,
+        amplitude_quadrature_points=amp_quad_pts,
+        vef_search_points=vef_search_pts,
+        vad_average=vad_avg,
+        interpolation_order=max(2, interp_order),
+    )
 
     requested = set(document.requested_methods())
     if "US" in requested:
@@ -631,10 +790,22 @@ def legacy_to_calculation(
     else:
         method = "tst"
 
-    if "SCT" in requested and path_model is not None:
+    if "MUOMT" in requested and path_model is not None:
+        tunneling = "muomt"
+    elif "COMT" in requested and path_model is not None:
+        tunneling = "comt"
+    elif "LCG3" in requested and path_model is not None:
+        tunneling = "lcg3"
+    elif "LCG4" in requested and path_model is not None:
+        tunneling = "lcg4"
+    elif "LCT" in requested and path_model is not None:
+        tunneling = "lct"
+    elif "SCT" in requested and path_model is not None:
         tunneling = "sct"
     elif "ZCT" in requested and path_model is not None:
         tunneling = "zct"
+    elif wigner_requested:
+        tunneling = "wigner"
     else:
         tunneling = "none"
 
@@ -652,6 +823,7 @@ def legacy_to_calculation(
         method=method,
         tunneling=tunneling,
         output_rate_unit=rate_unit,
+        lct_options=lct_options,
     )
     return LoadedCalculation(
         name=document.title or "Polyrate unit40 calculation",

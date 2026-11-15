@@ -44,6 +44,18 @@ EXTENDED_COLUMN_MAP: Mapping[str, str] = {
     "MCVT": "k_muvt",
     "US": "k_us",
 }
+TUNNELING_COLUMN_MAP: Mapping[str, str] = {
+    "TST": "k_tst",
+    "CVT": "k_cvt",
+    "CVT/ZCT": "k_cvt_zct",
+    "CVT/SCT": "k_cvt_sct",
+    "CVT/LCT": "k_cvt_lct",
+    "CVT/LCG3": "k_cvt_lct",
+    "CVT/LCG4": "k_cvt_lct",
+    "CVT/COMT": "k_cvt_comt",
+    "CVT/MOMT": "k_cvt_muomt",
+    "CVT/MUOMT": "k_cvt_muomt",
+}
 _ALLOWED_FIELDS = frozenset(
     {
         "k_tst",
@@ -51,6 +63,11 @@ _ALLOWED_FIELDS = frozenset(
         "k_cus",
         "k_muvt",
         "k_us",
+        "k_cvt_zct",
+        "k_cvt_sct",
+        "k_cvt_lct",
+        "k_cvt_comt",
+        "k_cvt_muomt",
         "k_final",
         "k_reverse_final",
     }

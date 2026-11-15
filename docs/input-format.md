@@ -7,7 +7,7 @@
 name = "reaction name"
 temperatures_k = [200.0, 300.0, 600.0]
 method = "cvt"             # tst | cvt | cus | muvt | us | all
-tunneling = "sct"          # none | wigner | wkb | zct | mepsag | sct | cd-scsag | eckart | omt | comt | muomt（后三者在 LCT 实现前等同 sct）
+tunneling = "muomt"        # none | wigner | wkb | zct | mepsag | sct | cd-scsag | lct | lcg3 | lcg4 | eckart | omt | comt | muomt | momt
 standard_pressure_bar = 1.0
 rate_unit = "cm^3 molecule^-1 s^-1"
 energy_grid_points = 400
@@ -15,7 +15,7 @@ state_bin_cm1 = 1.0
 state_max_energy_kj_mol = 250.0
 ```
 
-也可以用 `standard_pressure_pa`。当两者同时出现时，Pa 值优先。
+也可以用 `standard_pressure_pa`。当两者同时出现时，Pa 值优先。`tunneling = "lct"` 默认采用 Polyrate 2023 的 `LCG4`（也可显式指定 `"lcg3"` 或 `"lcg4"`）；在包含三维原子几何的路径上，`comt`/`omt` 与 `muomt`/`momt` 会自动跨越 ZCT、SCT 与 LCT 择优。
 
 ## 2. `reactants` / `products`
 
@@ -81,7 +81,7 @@ imaginary_frequency_cm1 = 1100.0
 
 输入值的正负均可，内部统一存为负频率。过渡态最多允许一个虚频。
 
-## 4. 反应路径（CVT / CUS / μVT / US / ZCT / SCT）
+## 4. 反应路径（CVT / CUS / μVT / US / ZCT / SCT / LCT / COMT / μOMT）
 
 ```toml
 [path]
@@ -93,6 +93,8 @@ coordinate = -0.5
 name = "s=-0.5"
 effective_mass_amu = 0.62  # 可选：直接提供 SCT 有效质量
 curvatures_bohr_inv = [0.15, 0.04, 0.01]  # 可选：各横模反应路径曲率 B_{mF}(s)
+tangent_vector = [...]     # 可选：质量标度单位路径切向量（省略时由三维几何样条自动计算）
+normal_mode_vectors = [[...], ...]  # 可选：质量标度横模本征向量（省略时由几何平行输运自动构造）
 # 以及完整 Species 字段
 
 [[path.points]]
@@ -104,9 +106,29 @@ coordinate = 0.5
 # ...
 ```
 
-至少需要三个唯一、可排序坐标。当启用 `zct`/`mepsag` 或 `sct`/`cd-scsag` 且未显式指定 `[tunneling.profile]` 时，PyRate 会自动从 `[path]` 构造振动绝热基态势 $V_a^G(s)$ 与 `TPCDSC` 小曲率有效质量分布 $\mu_{\text{eff}}(s)$。
+至少需要三个唯一、可排序坐标。当启用 `zct`/`mepsag`、`sct`/`cd-scsag`、`lct`/`lcg3`/`lcg4` 或 `comt`/`muomt` 且未显式指定 `[tunneling.profile]` 时，PyRate 会自动从 `[path]` 构造振动绝热基态势 $V_a^G(s)$、`TPCDSC` 小曲率有效质量分布 $\mu_{\text{eff}}(s)$ 及大曲率 corner-cutting 透射表。
 
-## 5. 显式 `[tunneling.profile]`
+## 5. `[tunneling]`：LCT 选项与显式一维 `[tunneling.profile]`
+
+大曲率隧穿（LCG3 / LCG4）与能量积分参数可在 `[tunneling]`（或 `[tunneling.lct]`）中配置：
+
+```toml
+[tunneling]
+lcg_version = 4                   # 3 (LCG3) | 4 (LCG4，默认)
+excited_states = "all"            # "all" | 0 ("ground") | 正整数上限 n
+energy_segments = 1               # Polyrate NSEGBOLTZ
+energy_quadrature_points = 41     # Polyrate NQE
+theta_quadrature_points = 120     # Polyrate NGTHETA
+amplitude_quadrature_points = 120 # Polyrate NGAMP
+vef_search_points = 999           # Polyrate VEFSRCH
+vad_average = false               # Polyrate VADAVG
+interpolation_order = 4           # Polyrate INTERPOLATE
+shepard_power = 4                 # 纯路径模式欧氏 Shepard 权重幂次
+```
+
+在 Python API 中还可通过 `LctOptions(potential_fn=...)` 传入精确离路径经典势能函数 `potential_fn(coords_angstrom) -> kj_mol`。
+
+若使用显式一维势垒表：
 
 ```toml
 [tunneling]
@@ -122,5 +144,5 @@ energy_grid_points = 400
 
 ## 6. Polyrate `.dat` + `.fu40` 输入
 
-`load_input("case.dat", fu40_path="case.fu40")` 或 `pyrate run case.dat --fu40 case.fu40` 可直接读取 Polyrate 2023 格式的 `.dat` 控制文件与 `.fu40` 电子结构路径文件（支持 `*point40` 下的 `freqsource read` 显式频率/曲率，以及 `freqsource hessian` 紧缩下三角或全矩阵笛卡尔力常数自动 `PROJCT` 投影与 `RPHB` 曲率计算）。
+`load_input("case.dat", fu40_path="case.fu40")` 或 `pyrate run case.dat --fu40 case.fu40` 可直接读取 Polyrate 2023 格式的 `.dat` 控制文件（含 `*TUNNEL` 中的 `LCTOPT`、`lcgmethod 3|4`、`ALLEXCIT`/`NOALLEXCIT`/`EXCITED`、`QUAD`）与 `.fu40` 电子结构路径文件（支持 `*point40` 下的 `freqsource read` 显式频率/曲率，以及 `freqsource hessian` 紧缩下三角或全矩阵笛卡尔力常数自动 `PROJCT` 投影与连续相位对齐的 `RPHB` 本征向量/曲率计算）。
 

@@ -12,13 +12,19 @@ from pyrate.constants import (
     LIGHT_SPEED_M_S,
     PLANCK_J_S,
 )
+from pyrate import native as native_mod
 from pyrate.native import (
     backend_info,
     beyer_swinehart,
     eckart_transmission,
+    gauss_legendre_quadrature,
     harmonic_log_partition,
+    lct_integrate_amplitudes,
+    lct_uniformize_probabilities,
+    neville_interpolate,
     refine_maximum,
     refine_minimum,
+    thermal_boltz_probabilities_kappa,
     thermal_eckart_kappa,
     thermal_wkb_kappa,
     thermal_wkb_profile_kappa,
@@ -104,7 +110,6 @@ def test_eckart_transmission_and_thermal_kappa() -> None:
     assert math.isfinite(kappa)
 
 
-
 def test_eckart_matches_parabolic_and_wigner_limits() -> None:
     """Guard the Johnston-Heicklen prefactors against analytic limits."""
 
@@ -141,3 +146,86 @@ def test_eckart_matches_parabolic_and_wigner_limits() -> None:
         40.0e3 / AVOGADRO_MOL, 60.0e3 / AVOGADRO_MOL, 1500.0, 300.0, 2000
     )
     assert math.isclose(asym, 14.521, rel_tol=2.0e-3)
+
+
+def test_lct_and_boltz_kernels_exactness_and_cpp_python_parity(monkeypatch) -> None:
+    # 1. Gauss-Legendre integrates x^5 + 3 x^4 - 2 x^2 + 1 on [-1.5, 2.5] to machine precision
+    nodes, weights = gauss_legendre_quadrature(-1.5, 2.5, 6)
+    poly_int = sum(
+        w * (x**5 + 3.0 * x**4 - 2.0 * x**2 + 1.0) for x, w in zip(nodes, weights, strict=True)
+    )
+
+    def antideriv(x: float) -> float:
+        return x**6 / 6.0 + 3.0 * x**5 / 5.0 - 2.0 * x**3 / 3.0 + x
+
+    assert math.isclose(poly_int, antideriv(2.5) - antideriv(-1.5), rel_tol=1.0e-13)
+
+    # 2. Neville interpolation reproduces a cubic polynomial exactly from 4 nodes
+    xs = (-0.8, -0.2, 0.3, 1.1)
+    ys = tuple(2.0 * x**3 - 1.5 * x**2 + 0.7 * x - 0.4 for x in xs)
+    x_eval = 0.55
+    expected_y = 2.0 * x_eval**3 - 1.5 * x_eval**2 + 0.7 * x_eval - 0.4
+    assert math.isclose(neville_interpolate(xs, ys, x_eval), expected_y, rel_tol=1.0e-14)
+
+    # 3. LCSINT + LCPROB/LCGSRT + BOLTZ overflow-safe log-space integration
+    st = (-1.2, -0.9, -0.6, -0.3, -0.05)
+    esv = (0.004, 0.008, 0.012, 0.016, 0.020)
+    sinx = (0.95, 0.96, 0.98, 0.99, 1.0)
+    thet = (8.5, 5.2, 2.6, 0.8, 0.0)
+    tau = (120.0, 115.0, 110.0, 105.0, 100.0)
+    redm_au = 44000.0
+
+    amps = lct_integrate_amplitudes(st, esv, sinx, thet, tau, redm_au, 0, 40, 4)
+    assert len(amps) == 5
+    assert all(a >= 0.0 for a in amps)
+    assert any(a > 0.0 for a in amps[:-1])
+
+    prim_ground = (amps[0], amps[1], amps[2], amps[3], max(amps[3], 0.25))
+    prim_cumul = (amps[0], amps[1], amps[2] * 1.3, amps[3] * 1.5, max(amps[3], 0.25) * 1.4)
+    unif_matrix, sorted_probs = lct_uniformize_probabilities([prim_ground, prim_cumul])
+    assert len(unif_matrix) == 2
+    assert len(unif_matrix[0]) == 5
+    assert len(sorted_probs) == 4
+    assert math.isclose(unif_matrix[0][-1], 0.5, rel_tol=1.0e-15)
+    assert all(0.0 <= p <= 1.0 for p in sorted_probs)
+    assert all(s >= g for s, g in zip(sorted_probs, unif_matrix[0][:-1], strict=True))
+
+    # Extreme low-temperature BOLTZ overflow test: at T = 25 K, beta * V_max = 721.64 > 709.78
+    # (naive exp/sinh overflows IEEE-754 float64!), while log-space BOLTZ stays exact and finite.
+    kj_to_j = 1000.0 / AVOGADRO_MOL
+    e_nodes_kj, e_weights_kj = gauss_legendre_quadrature(0.0, 150.0, 24)
+    e_nodes_j = tuple(val * kj_to_j for val in e_nodes_kj)
+    e_weights_j = tuple(val * kj_to_j for val in e_weights_kj)
+    probs = tuple(1.0 / (1.0 + math.exp(4.6 * (150.0 - e))) for e in e_nodes_kj)
+    kappa_cold = thermal_boltz_probabilities_kappa(
+        e_nodes_j, e_weights_j, probs, 150.0 * kj_to_j, 25.0
+    )
+    assert math.isfinite(kappa_cold) and kappa_cold > 1.0e10
+
+    # Direct C++ vs pure-Python fallback parity check when C++ extension is compiled
+    if native_mod._cpp is not None:
+        monkeypatch.setattr(native_mod, "HAS_NATIVE", True)
+        cpp_nodes, cpp_weights = gauss_legendre_quadrature(-1.5, 2.5, 17)
+        cpp_nev = neville_interpolate(xs, ys, x_eval)
+        cpp_amps = lct_integrate_amplitudes(st, esv, sinx, thet, tau, redm_au, 0, 40, 4)
+        cpp_mat, cpp_tot = lct_uniformize_probabilities([prim_ground, prim_cumul])
+        cpp_kap = thermal_boltz_probabilities_kappa(
+            e_nodes_j, e_weights_j, probs, 150.0 * kj_to_j, 25.0
+        )
+
+        monkeypatch.setattr(native_mod, "HAS_NATIVE", False)
+        py_nodes, py_weights = gauss_legendre_quadrature(-1.5, 2.5, 17)
+        py_nev = neville_interpolate(xs, ys, x_eval)
+        py_amps = lct_integrate_amplitudes(st, esv, sinx, thet, tau, redm_au, 0, 40, 4)
+        py_mat, py_tot = lct_uniformize_probabilities([prim_ground, prim_cumul])
+        py_kap = thermal_boltz_probabilities_kappa(
+            e_nodes_j, e_weights_j, probs, 150.0 * kj_to_j, 25.0
+        )
+
+        assert np.allclose(py_nodes, cpp_nodes, rtol=1.0e-13, atol=1.0e-14)
+        assert np.allclose(py_weights, cpp_weights, rtol=1.0e-13, atol=1.0e-14)
+        assert math.isclose(py_nev, cpp_nev, rel_tol=1.0e-14)
+        assert np.allclose(py_amps, cpp_amps, rtol=1.0e-12, atol=1.0e-15)
+        assert np.allclose(py_mat, cpp_mat, rtol=1.0e-13, atol=1.0e-15)
+        assert np.allclose(py_tot, cpp_tot, rtol=1.0e-13, atol=1.0e-15)
+        assert math.isclose(py_kap, cpp_kap, rel_tol=1.0e-13)
