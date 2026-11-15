@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from .constants import AVOGADRO_MOL
 from .reference import ReferenceRateTable, parse_fu15_summary
-
 
 _SUMMARY = re.compile(
     r"(?:^\s*Summary\s+of\s+(?:forward|reverse)\s+rate\s+constants\s*\("
@@ -65,7 +65,7 @@ def parse_fu15_tables(text: str) -> tuple[ReferenceRateTable, ...]:
         raise ValueError("no Polyrate rate summary found")
     tables = tuple(
         parse_fu15_summary(text[start:stop])
-        for start, stop in zip(starts, starts[1:] + [len(text)])
+        for start, stop in zip(starts, starts[1:] + [len(text)], strict=False)
     )
     return tables
 

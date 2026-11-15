@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import math
 import os
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Sequence
 
 import numpy as np
 
@@ -171,7 +171,7 @@ def wkb_exponent(
     potentials = tuple(float(value) for value in potentials_j_per_molecule)
     if len(coordinates) != len(potentials) or len(coordinates) < 2:
         raise ValueError("coordinates and potentials require matching lengths of at least 2")
-    if any(right <= left for left, right in zip(coordinates, coordinates[1:])):
+    if any(right <= left for left, right in zip(coordinates, coordinates[1:], strict=False)):
         raise ValueError("coordinates must be strictly increasing")
     if reduced_mass_kg <= 0.0:
         raise ValueError("reduced mass must be positive")
@@ -203,7 +203,7 @@ def wkb_exponent_profile(
         raise ValueError(
             "coordinates, potentials, and effective_masses require matching lengths >= 2"
         )
-    if any(right <= left for left, right in zip(coordinates, coordinates[1:])):
+    if any(right <= left for left, right in zip(coordinates, coordinates[1:], strict=False)):
         raise ValueError("coordinates must be strictly increasing")
     if any(m <= 0.0 for m in masses):
         raise ValueError("effective masses must be positive")
@@ -274,7 +274,7 @@ def thermal_wkb_kappa(
     potentials = tuple(float(value) for value in potentials_j_per_molecule)
     if len(coordinates) != len(potentials) or len(coordinates) < 3:
         raise ValueError("coordinates and potentials require matching lengths of at least 3")
-    if any(right <= left for left, right in zip(coordinates, coordinates[1:])):
+    if any(right <= left for left, right in zip(coordinates, coordinates[1:], strict=False)):
         raise ValueError("coordinates must be strictly increasing")
     if temperature_k <= 0.0 or reduced_mass_kg <= 0.0:
         raise ValueError("temperature and reduced mass must be positive")
@@ -312,7 +312,7 @@ def thermal_wkb_profile_kappa(
         raise ValueError(
             "coordinates, potentials, and effective_masses require matching lengths >= 3"
         )
-    if any(right <= left for left, right in zip(coordinates, coordinates[1:])):
+    if any(right <= left for left, right in zip(coordinates, coordinates[1:], strict=False)):
         raise ValueError("coordinates must be strictly increasing")
     if temperature_k <= 0.0 or any(m <= 0.0 for m in masses):
         raise ValueError("temperature and effective masses must be positive")

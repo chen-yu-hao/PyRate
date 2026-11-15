@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
+
 from .constants import (
     AMU_KG,
     ANGSTROM_M,
     AVOGADRO_MOL,
     BOHR_ANGSTROM,
-    BOLTZMANN_J_K,
     GAS_CONSTANT_J_MOL_K,
     HBAR_J_S,
     LIGHT_SPEED_M_S,
 )
+from .interpolation import CubicSpline, refined_grid
 from .models import Reaction, ReactionPath, Species, TunnelingProfile
 from .native import (
-    eckart_transmission,
     refine_maximum,
     thermal_eckart_kappa,
     thermal_wkb_kappa,
@@ -129,6 +130,37 @@ def path_adiabatic_ground_potentials_kj_mol(path: ReactionPath) -> tuple[float, 
     )
 
 
+def _mode_frequencies_for_curvatures(species: Species, curvature_count: int) -> tuple[float, ...]:
+    """Return the frequencies that the curvature components ``B_mF`` refer to.
+
+    Curvature components are stored per generalized normal mode, in the order of
+    ``Species.frequencies_cm1``.  They must therefore be paired with the raw
+    frequency list: dropping non-positive entries first would shift every later
+    mode onto the wrong curvature component.  A list holding one component per
+    *positive* frequency is accepted as well.
+    """
+
+    scale = species.frequency_scale
+    floor = species.frequency_floor_cm1
+    raw = species.frequencies_cm1
+    positive = species.positive_frequencies_cm1
+    if curvature_count == len(raw):
+        return tuple(
+            (max(value * scale, floor) if floor is not None else value * scale)
+            if value > 0.0
+            else 0.0
+            for value in raw
+        )
+    if curvature_count == len(positive):
+        return positive
+    if curvature_count == 0:
+        return ()
+    raise ValueError(
+        f"path point {species.name!r} has {curvature_count} curvature components but "
+        f"{len(raw)} frequencies ({len(positive)} positive); they must match one-to-one"
+    )
+
+
 def _compute_cdscsag_effective_masses_amu(path: ReactionPath) -> tuple[float, ...]:
     """Compute Polyrate CD-SCSAG (SCT) effective masses mu_eff(s) along a reaction path."""
 
@@ -152,18 +184,17 @@ def _compute_cdscsag_effective_masses_amu(path: ReactionPath) -> tuple[float, ..
 
     for point in path.points:
         curvatures = point.curvatures_bohr_inv
-        freqs = point.dividing_surface.positive_frequencies_cm1
+        freqs = _mode_frequencies_for_curvatures(point.dividing_surface, len(curvatures))
         if not curvatures or not freqs:
             turning_points_bohr.append(0.0)
             bkap_values.append(0.0)
             continue
-        m_count = min(len(curvatures), len(freqs))
         b_sq_sum = 0.0
         denom_sum = 0.0
-        for idx in range(m_count):
-            b_m = curvatures[idx]
-            omega_s_inv = 2.0 * math.pi * LIGHT_SPEED_M_S * 100.0 * freqs[idx]
+        for b_m, frequency_cm1 in zip(curvatures, freqs, strict=True):
+            omega_s_inv = 2.0 * math.pi * LIGHT_SPEED_M_S * 100.0 * frequency_cm1
             if omega_s_inv <= 0.0:
+                # Modes with imaginary generalized frequencies have no turning point.
                 continue
             # Dimensionless turning-point inverse length in bohr^-1:
             # t_m^-2 = (mu * omega_m / hbar) in bohr^-2
@@ -205,14 +236,31 @@ def _compute_cdscsag_effective_masses_amu(path: ReactionPath) -> tuple[float, ..
     return tuple(effective_masses)
 
 
+DEFAULT_PATH_SUBDIVISIONS = 8
+
+
+def _spline_usable(point_count: int, subdivisions: int) -> bool:
+    return subdivisions > 1 and point_count >= 4
+
+
 def path_tunneling_profile(
     path: ReactionPath,
     *,
     method: str = "zct",
     energy_grid_points: int = 400,
+    subdivisions: int = DEFAULT_PATH_SUBDIVISIONS,
 ) -> TunnelingProfile:
-    """Build a ZCT (MEPSAG) or SCT (CD-SCSAG) TunnelingProfile from a ReactionPath."""
+    """Build a ZCT (MEPSAG) or SCT (CD-SCSAG) TunnelingProfile from a ReactionPath.
 
+    ``V_a^G(s)`` and ``mu_eff(s)`` are interpolated with a cubic spline onto a
+    grid ``subdivisions`` times finer than the stored path before the action
+    integrals are evaluated.  The kernels integrate piecewise-linear data, so
+    on a typical stored path the unrefined grid error is several percent in
+    ``kappa``; ``subdivisions=1`` restores that behaviour.
+    """
+
+    if subdivisions < 1:
+        raise ValueError("subdivisions must be at least 1")
     coordinates_angstrom = _path_coordinates_angstrom(path)
     energies_kj_mol = path_adiabatic_ground_potentials_kj_mol(path)
     normalized = method.lower()
@@ -221,6 +269,22 @@ def path_tunneling_profile(
         if normalized in {"sct", "cd-scsag"}
         else None
     )
+    if _spline_usable(len(coordinates_angstrom), subdivisions):
+        fine = refined_grid(coordinates_angstrom, subdivisions)
+        fine_energies = CubicSpline(coordinates_angstrom, energies_kj_mol)(fine)
+        if effective_masses is not None:
+            # Interpolate ln(mu_eff) so the result stays positive, and keep it
+            # inside the sampled range so the spline cannot invent extra
+            # corner cutting between path points.
+            log_masses = np.log(np.asarray(effective_masses, dtype=float))
+            fine_log = np.clip(
+                CubicSpline(coordinates_angstrom, log_masses)(fine),
+                float(log_masses.min()),
+                float(log_masses.max()),
+            )
+            effective_masses = tuple(float(value) for value in np.exp(fine_log))
+        coordinates_angstrom = tuple(float(value) for value in fine)
+        energies_kj_mol = tuple(float(value) for value in fine_energies)
     return TunnelingProfile(
         coordinates_angstrom=coordinates_angstrom,
         energies_kj_mol=energies_kj_mol,
@@ -235,6 +299,7 @@ def cag_kappa(
     temperature_k: float,
     *,
     variational_coordinate: float | None = None,
+    subdivisions: int = DEFAULT_PATH_SUBDIVISIONS,
 ) -> float:
     """Return Polyrate's Canonical Adiabatic Ground-State (CAG) factor kappa^CAG(T).
 
@@ -248,22 +313,18 @@ def cag_kappa(
         return 1.0
     coords = [point.coordinate for point in reaction.path.points]
     vag = list(path_adiabatic_ground_potentials_kj_mol(reaction.path))
-    vag_max = refine_maximum(coords, vag).value
     target_s = 0.0 if variational_coordinate is None else float(variational_coordinate)
-    # Linearly interpolate V_a^G(target_s) on the reaction path grid
-    if target_s <= coords[0]:
-        vag_star = vag[0]
-    elif target_s >= coords[-1]:
-        vag_star = vag[-1]
+    target_s = min(max(target_s, coords[0]), coords[-1])
+    if _spline_usable(len(coords), subdivisions):
+        # Use the same spline as the tunnelling profile, so that V^AG here is
+        # exactly the barrier top the transmission integral is referred to.
+        spline = CubicSpline(coords, vag)
+        vag_max = float(np.max(spline(refined_grid(coords, subdivisions))))
+        vag_star = float(spline(target_s)[0])
     else:
-        vag_star = vag[0]
-        for idx in range(1, len(coords)):
-            if coords[idx - 1] <= target_s <= coords[idx]:
-                span = coords[idx] - coords[idx - 1]
-                weight = (target_s - coords[idx - 1]) / span if span > 0.0 else 0.0
-                vag_star = vag[idx - 1] + weight * (vag[idx] - vag[idx - 1])
-                break
-    diff_kj_mol = vag_star - vag_max
+        vag_max = refine_maximum(coords, vag).value
+        vag_star = float(np.interp(target_s, coords, vag))
+    diff_kj_mol = min(0.0, vag_star - vag_max)
     exponent = (diff_kj_mol * 1000.0) / (GAS_CONSTANT_J_MOL_K * temperature_k)
     return math.exp(max(-700.0, min(700.0, exponent)))
 

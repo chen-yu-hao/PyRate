@@ -10,7 +10,6 @@ from .constants import (
     AMU_KG,
     ANGSTROM_M,
     BOLTZMANN_J_K,
-    GAS_CONSTANT_J_MOL_K,
     LIGHT_SPEED_M_S,
     PLANCK_J_S,
     WAVENUMBER_TO_KJ_MOL,

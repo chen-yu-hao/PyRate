@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 from .constants import DEFAULT_STANDARD_PRESSURE_PA
 from .elements import atomic_mass_amu, canonical_symbol
@@ -48,7 +49,7 @@ class Atom:
         return (self.x_angstrom, self.y_angstrom, self.z_angstrom)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], *, default_mass_convention: str = "iupac") -> "Atom":
+    def from_mapping(cls, data: Mapping[str, Any], *, default_mass_convention: str = "iupac") -> Atom:
         xyz = data.get("xyz") or data.get("coordinates_angstrom")
         if xyz is None or len(xyz) != 3:
             raise ValueError("each atom requires xyz = [x, y, z]")
@@ -77,7 +78,7 @@ class ElectronicState:
             raise ValueError("electronic-state relative energy cannot be negative")
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "ElectronicState":
+    def from_mapping(cls, data: Mapping[str, Any]) -> ElectronicState:
         return cls(
             degeneracy=int(data.get("degeneracy", 1)),
             energy_kj_mol=float(data.get("energy_kj_mol", 0.0)),
@@ -110,7 +111,7 @@ class HinderedRotor:
             object.__setattr__(self, "moment_amu_angstrom2", float(self.moment_amu_angstrom2))
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "HinderedRotor":
+    def from_mapping(cls, data: Mapping[str, Any]) -> HinderedRotor:
         return cls(
             frequency_cm1=float(data["frequency_cm1"]),
             barrier_kj_mol=float(data.get("barrier_kj_mol", 0.0)),
@@ -210,7 +211,7 @@ class Species:
         return tuple(scaled)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], default_name: str = "species") -> "Species":
+    def from_mapping(cls, data: Mapping[str, Any], default_name: str = "species") -> Species:
         mass_convention = str(data.get("mass_convention", "iupac"))
         atoms = tuple(
             Atom.from_mapping(item, default_mass_convention=mass_convention)
@@ -283,7 +284,7 @@ class PathPoint:
         object.__setattr__(self, "curvatures_bohr_inv", _as_float_tuple(self.curvatures_bohr_inv))
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], index: int) -> "PathPoint":
+    def from_mapping(cls, data: Mapping[str, Any], index: int) -> PathPoint:
         return cls(
             coordinate=float(data["coordinate"]),
             dividing_surface=Species.from_mapping(data, default_name=f"path-{index}"),
@@ -336,7 +337,7 @@ class TunnelingProfile:
         energies = _as_float_tuple(self.energies_kj_mol)
         if len(coordinates) != len(energies) or len(coordinates) < 3:
             raise ValueError("tunneling profile requires matching arrays with at least 3 points")
-        if any(b <= a for a, b in zip(coordinates, coordinates[1:])):
+        if any(b <= a for a, b in zip(coordinates, coordinates[1:], strict=False)):
             raise ValueError("tunneling coordinates must be strictly increasing")
         if self.reduced_mass_amu <= 0.0:
             raise ValueError("reduced_mass_amu must be positive")
@@ -353,7 +354,7 @@ class TunnelingProfile:
         object.__setattr__(self, "energies_kj_mol", energies)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "TunnelingProfile":
+    def from_mapping(cls, data: Mapping[str, Any]) -> TunnelingProfile:
         return cls(
             coordinates_angstrom=tuple(float(value) for value in data["coordinates_angstrom"]),
             energies_kj_mol=tuple(float(value) for value in data["energies_kj_mol"]),

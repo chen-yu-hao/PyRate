@@ -7,11 +7,12 @@ import csv
 import io
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from .calculation import CalculationResult, calculate_rates
-from .input import LoadedCalculation, legacy_to_calculation, load_input, load_toml
+from .input import legacy_to_calculation, load_input
 from .legacy import LegacyInput
 from .native import backend_info
 

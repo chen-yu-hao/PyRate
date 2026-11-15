@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -48,7 +49,6 @@ def _hessian_to_si(
 def _rigid_basis(
     masses_kg: FloatArray, coordinates_m: FloatArray
 ) -> tuple[FloatArray, int]:
-    atom_count = masses_kg.size
     center = np.sum(coordinates_m * masses_kg[:, None], axis=0) / masses_kg.sum()
     centered = coordinates_m - center
     vectors: list[FloatArray] = []

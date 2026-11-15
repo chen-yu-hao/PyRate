@@ -7,7 +7,6 @@ import pytest
 from pyrate.constants import AVOGADRO_MOL
 from pyrate.head_to_head import compare_fu15_to_pyrate, parse_fu15_tables
 
-
 FU15 = """
  Summary of forward rate constants (cm**3/molecule-1 s-1) :
      T(K) TST CVT CVT/ZCT CVT/SCT

@@ -7,9 +7,10 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import numpy as np
 
@@ -198,6 +199,40 @@ def _fortran_float(token: str) -> float:
     return float(token.replace("D", "E").replace("d", "e"))
 
 
+_LENGTH_UNIT_ALIASES = {
+    "BOHR": "BOHR",
+    "AU": "BOHR",
+    "ANG": "ANG",
+    "ANGSTROM": "ANG",
+    "ANGSTROMS": "ANG",
+}
+
+
+def _legacy_choice(
+    section: LegacySection | None,
+    keyword: str,
+    default: str,
+    supported: Mapping[str, str],
+    *,
+    where: str,
+) -> str:
+    """Return a normalized keyword value, refusing values PyRate cannot honour.
+
+    Silently treating an unknown unit (for example mass-scaled coordinates) as a
+    supported one would produce plausible but wrong rate constants.
+    """
+
+    entry = section.get(keyword) if section is not None else None
+    raw = entry.arguments[0].upper() if entry and entry.arguments else default
+    try:
+        return supported[raw]
+    except KeyError:
+        raise ValueError(
+            f"{where} {keyword} {raw.lower()!r} is not supported; "
+            f"supported values: {', '.join(sorted(set(key.lower() for key in supported)))}"
+        ) from None
+
+
 def _unpack_fu40_hessian(section: LegacySection, dimension: int, *, hessform: str) -> np.ndarray:
     entry = section.get("HESSIAN")
     if entry is None:
@@ -260,42 +295,30 @@ def legacy_to_calculation(
     ordered_elements = [atom_map[idx] for idx in ordered_atom_indices]
 
     general = document.section("GENERAL")
-    inpunit_entry = general.get("INPUNIT") if general else None
-    inpunit = (
-        inpunit_entry.arguments[0].upper()
-        if inpunit_entry and inpunit_entry.arguments
-        else "AU"
-    )
-    geom_scale = BOHR_ANGSTROM if inpunit == "AU" else 1.0
+    inpunit = _legacy_choice(general, "INPUNIT", "AU", _LENGTH_UNIT_ALIASES, where="*GENERAL")
+    geom_scale = BOHR_ANGSTROM if inpunit == "BOHR" else 1.0
     hartree_to_kj_mol = HARTREE_J * AVOGADRO_MOL / 1000.0
     au_to_cm1 = HARTREE_J / (PLANCK_J_S * LIGHT_SPEED_M_S * 100.0)
 
     gen40 = fu40_document.section("GEN40")
-    freqsource_entry = gen40.get("FREQSOURCE") if gen40 else None
-    freqsource = (
-        freqsource_entry.arguments[0].upper()
-        if freqsource_entry and freqsource_entry.arguments
-        else "READ"
+    freqsource = _legacy_choice(
+        gen40, "FREQSOURCE", "READ", {"READ": "READ", "HESSIAN": "HESSIAN"}, where="*GEN40"
     )
-    frequnit_entry = gen40.get("FREQUNIT") if gen40 else None
-    frequnit = (
-        frequnit_entry.arguments[0].upper()
-        if frequnit_entry and frequnit_entry.arguments
-        else "WAVEN"
+    frequnit = _legacy_choice(
+        gen40, "FREQUNIT", "WAVEN", {"WAVEN": "WAVEN", "AU": "AU"}, where="*GEN40"
     )
-    hessform_entry = gen40.get("HESSFORM") if gen40 else None
-    hessform = (
-        hessform_entry.arguments[0].upper()
-        if hessform_entry and hessform_entry.arguments
-        else "PACKED"
+    hessform = _legacy_choice(
+        gen40, "HESSFORM", "PACKED", {"PACKED": "PACKED", "FULL": "FULL"}, where="*GEN40"
     )
-    geomunit40_entry = gen40.get("GEOMUNIT") if gen40 else None
-    geomunit40 = (
-        geomunit40_entry.arguments[0].upper()
-        if geomunit40_entry and geomunit40_entry.arguments
-        else "BOHR"
-    )
+    geomunit40 = _legacy_choice(gen40, "GEOMUNIT", "BOHR", _LENGTH_UNIT_ALIASES, where="*GEN40")
     geom40_scale = BOHR_ANGSTROM if geomunit40 == "BOHR" else 1.0
+    # Gradients and Hessians are interpreted as unscaled Cartesian derivatives in
+    # hartree/bohr and hartree/bohr^2; mass-scaled or Angstrom-based data would be
+    # misread, so anything else is refused rather than guessed.
+    for derivative_keyword in ("GRADUNIT", "HESSUNIT"):
+        _legacy_choice(
+            gen40, derivative_keyword, "BOHR", {"BOHR": "BOHR", "AU": "BOHR"}, where="*GEN40"
+        )
     freq_unit_scale = au_to_cm1 if frequnit == "AU" else 1.0
 
     rate_sec = document.section("RATE")
