@@ -363,9 +363,11 @@ def eckart_transmission(
     inv_sqrt_sum = (1.0 / math.sqrt(barrier_forward_j_per_molecule)) + (
         1.0 / math.sqrt(barrier_reverse_j_per_molecule)
     )
-    two_pi_alpha = (2.0 * math.pi / u_star) * math.sqrt(energy_j_per_molecule) / inv_sqrt_sum
+    # Johnston & Heicklen (1962): 2*pi*a = 2*sqrt(alpha_1*xi) / (alpha_1^-1/2 + alpha_2^-1/2)
+    # with alpha_i = 2*pi*V_i / (h*nu*), i.e. a prefactor of 4*pi / (h*nu*).
+    two_pi_alpha = (4.0 * math.pi / u_star) * math.sqrt(energy_j_per_molecule) / inv_sqrt_sum
     two_pi_beta = (
-        (2.0 * math.pi / u_star)
+        (4.0 * math.pi / u_star)
         * math.sqrt(
             max(
                 0.0,
@@ -386,7 +388,7 @@ def eckart_transmission(
         - 1.0
     )
     if d_arg >= 0.0:
-        two_pi_delta = 0.5 * math.pi * math.sqrt(d_arg)
+        two_pi_delta = math.pi * math.sqrt(d_arg)
         scale = max(a_plus, two_pi_delta)
         num = (_safe_exp(a_plus - scale) + _safe_exp(-a_plus - scale)) - (
             _safe_exp(a_minus - scale) + _safe_exp(-a_minus - scale)
@@ -395,7 +397,7 @@ def eckart_transmission(
             _safe_exp(two_pi_delta - scale) + _safe_exp(-two_pi_delta - scale)
         )
         return min(1.0, max(0.0, num / den))
-    cos_term = 2.0 * math.cos(0.5 * math.pi * math.sqrt(-d_arg))
+    cos_term = 2.0 * math.cos(math.pi * math.sqrt(-d_arg))
     scale = a_plus
     num = (1.0 + _safe_exp(-2.0 * a_plus)) - (
         _safe_exp(a_minus - scale) + _safe_exp(-a_minus - scale)

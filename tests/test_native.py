@@ -4,7 +4,14 @@ import math
 
 import numpy as np
 
-from pyrate.constants import AMU_KG, ANGSTROM_M, AVOGADRO_MOL
+from pyrate.constants import (
+    AMU_KG,
+    ANGSTROM_M,
+    AVOGADRO_MOL,
+    BOLTZMANN_J_K,
+    LIGHT_SPEED_M_S,
+    PLANCK_J_S,
+)
 from pyrate.native import (
     backend_info,
     beyer_swinehart,
@@ -96,3 +103,41 @@ def test_eckart_transmission_and_thermal_kappa() -> None:
     assert kappa > 1.0
     assert math.isfinite(kappa)
 
+
+
+def test_eckart_matches_parabolic_and_wigner_limits() -> None:
+    """Guard the Johnston-Heicklen prefactors against analytic limits."""
+
+    h_c = PLANCK_J_S * LIGHT_SPEED_M_S * 100.0
+    barrier_j = 100.0e3 / AVOGADRO_MOL
+    frequency_cm1 = 1000.0
+    quantum_j = h_c * frequency_cm1
+
+    # Just below a high barrier the Eckart potential is locally parabolic:
+    # P(E) -> 1 / (1 + exp(2 pi (V - E) / (h nu*))).
+    assert math.isclose(
+        eckart_transmission(barrier_j, barrier_j, barrier_j, frequency_cm1), 0.5, rel_tol=5.0e-2
+    )
+    energy_j = barrier_j - 0.25 * quantum_j
+    parabolic = 1.0 / (1.0 + math.exp(2.0 * math.pi * (barrier_j - energy_j) / quantum_j))
+    assert math.isclose(
+        eckart_transmission(energy_j, barrier_j, barrier_j, frequency_cm1),
+        parabolic,
+        rel_tol=1.0e-1,
+    )
+
+    # High temperature: kappa -> 1 + (h nu* / k_B T)^2 / 24 (Wigner).
+    ratio = quantum_j / (BOLTZMANN_J_K * 3000.0)
+    kappa_hot = thermal_eckart_kappa(barrier_j, barrier_j, frequency_cm1, 3000.0, 2000)
+    assert math.isclose(kappa_hot - 1.0, ratio * ratio / 24.0, rel_tol=0.3)
+
+    # Independent midpoint-rule evaluation of the textbook formula.
+    assert math.isclose(
+        thermal_eckart_kappa(barrier_j, barrier_j, frequency_cm1, 300.0, 2000),
+        3.2462,
+        rel_tol=2.0e-3,
+    )
+    asym = thermal_eckart_kappa(
+        40.0e3 / AVOGADRO_MOL, 60.0e3 / AVOGADRO_MOL, 1500.0, 300.0, 2000
+    )
+    assert math.isclose(asym, 14.521, rel_tol=2.0e-3)

@@ -149,3 +149,36 @@ def test_hindered_rotor_pitzer_gwinn_correction() -> None:
         log_vibrational_partition(species_harm, 500.0),
     )
 
+
+
+def test_hindered_rotor_moment_and_frequency_forms_agree() -> None:
+    """An explicit moment consistent with (frequency, barrier) must change nothing."""
+
+    from pyrate.constants import AMU_KG, ANGSTROM_M, AVOGADRO_MOL, LIGHT_SPEED_M_S
+
+    moment_amu_a2 = 3.0
+    sigma = 3
+    barrier_kj_mol = 12.0
+    inertia = moment_amu_a2 * AMU_KG * ANGSTROM_M**2
+    barrier_j = barrier_kj_mol * 1000.0 / AVOGADRO_MOL
+    # Harmonic torsion frequency of V = (W / 2)(1 - cos(sigma * phi)).
+    frequency_cm1 = (
+        (sigma / (2.0 * math.pi)) * math.sqrt(barrier_j / (2.0 * inertia))
+    ) / (LIGHT_SPEED_M_S * 100.0)
+    with_moment = HinderedRotor(
+        frequency_cm1=frequency_cm1,
+        barrier_kj_mol=barrier_kj_mol,
+        symmetry_number=sigma,
+        moment_amu_angstrom2=moment_amu_a2,
+    )
+    without_moment = HinderedRotor(
+        frequency_cm1=frequency_cm1, barrier_kj_mol=barrier_kj_mol, symmetry_number=sigma
+    )
+    for temperature in (100.0, 300.0, 1000.0, 5000.0):
+        assert math.isclose(
+            hindered_rotor_log_correction(with_moment, temperature),
+            hindered_rotor_log_correction(without_moment, temperature),
+            abs_tol=1.0e-9,
+        )
+    # Deep in the well the classical hindered rotor reduces to the classical oscillator.
+    assert abs(hindered_rotor_log_correction(with_moment, 20.0)) < 0.02

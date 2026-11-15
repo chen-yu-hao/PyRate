@@ -4,7 +4,7 @@
 
 Reference: Polyrate 2023, DOI `10.17632/vpf3y9cbhf.1` (program, Apache-2.0). The published distribution includes **112 test runs** (46 direct-dynamics tests, 85 single-level tests and 27 dual-level tests). These classifications overlap; do not sum them. Reference outputs are not bundled in PyRate; users can point the comparator or test suite at a local copy of the Polyrate 2023 distribution.
 
-PyRate 0.2 implements single-level harmonic/anharmonic/hindered-rotor thermodynamics, CTST/CVT/CUS/μVT/US variational methods, Wigner/CAG/ZCT/SCT/Eckart/COMT/μOMT tunneling, and direct execution of `.dat + .fu40` reaction-path inputs.
+PyRate 0.2 implements single-level harmonic/anharmonic/hindered-rotor thermodynamics, CTST/CVT/CUS/μVT/US variational methods, Wigner/CAG/ZCT/SCT/Eckart tunneling, and direct execution of `.dat + .fu40` reaction-path inputs.
 
 ## Basic run
 
@@ -23,7 +23,7 @@ The tool parses all three Polyrate 2023 `.fu15` rate table header styles and mer
 
 Built-in column mappings automatically resolve:
 - Base variational methods: `TST` → `k_tst`, `CVT` → `k_cvt`, `CUS` → `k_cus`, `muVT`/`uVT` → `k_muvt`, `US` → `k_us`.
-- Tunneling-corrected columns (`<METHOD>/<TUNNEL>`): `/W`, `/ZCT`, `/MEPSAG`, `/SCT`, `/CD-SCSAG`, `/OMT`, `/COMT`, `/mOMT`, `/muOMT` when the PyRate run uses the matching tunneling method (or override via `--column <REF>=<FIELD>`).
+- Tunneling-corrected columns (`<METHOD>/<TUNNEL>`): `/W`, `/ZCT`, `/MEPSAG`, `/SCT`, `/CD-SCSAG`, `/OMT`, `/COMT`, `/mOMT`, `/muOMT` when the PyRate run uses the matching tunneling method (or override via `--column <REF>=<FIELD>`). Note that PyRate's `omt`/`comt`/`muomt` options only optimize over ZCT and SCT (LCT is not implemented), so they reduce to SCT and are not expected to reproduce Polyrate's `/COMT` or `/mOMT` columns when large-curvature tunneling matters.
 
 Exit code: 0 = comparisons present and all required comparisons passed; 1 = quantitative mismatch, missing values/temperatures, or strict-mode unmapped columns; 2 = invalid input, ambiguous reference tables or unsupported units.
 

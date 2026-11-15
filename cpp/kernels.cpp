@@ -208,16 +208,18 @@ double eckart_transmission_impl(const double energy_j,
     }
     const double inv_sqrt_sum =
         (1.0 / std::sqrt(barrier_forward_j)) + (1.0 / std::sqrt(barrier_reverse_j));
-    const double two_pi_alpha = (2.0 * kPi / u_star) * std::sqrt(energy_j) / inv_sqrt_sum;
+    // Johnston & Heicklen (1962): 2*pi*a = 2*sqrt(alpha_1*xi) / (alpha_1^-1/2 + alpha_2^-1/2)
+    // with alpha_i = 2*pi*V_i / (h*nu*), i.e. a prefactor of 4*pi / (h*nu*).
+    const double two_pi_alpha = (4.0 * kPi / u_star) * std::sqrt(energy_j) / inv_sqrt_sum;
     const double two_pi_beta =
-        (2.0 * kPi / u_star) *
+        (4.0 * kPi / u_star) *
         std::sqrt(std::max(0.0, energy_j - barrier_forward_j + barrier_reverse_j)) / inv_sqrt_sum;
     const double a_plus = two_pi_alpha + two_pi_beta;
     const double a_minus = std::abs(two_pi_alpha - two_pi_beta);
     const double d_arg = 16.0 * barrier_forward_j * barrier_reverse_j / (u_star * u_star) - 1.0;
 
     if (d_arg >= 0.0) {
-        const double two_pi_delta = 0.5 * kPi * std::sqrt(d_arg);
+        const double two_pi_delta = kPi * std::sqrt(d_arg);
         const double scale = std::max(a_plus, two_pi_delta);
         const double num =
             (safe_exp(a_plus - scale) + safe_exp(-a_plus - scale)) -
@@ -227,7 +229,7 @@ double eckart_transmission_impl(const double energy_j,
             (safe_exp(two_pi_delta - scale) + safe_exp(-two_pi_delta - scale));
         return std::clamp(num / den, 0.0, 1.0);
     }
-    const double cos_term = 2.0 * std::cos(0.5 * kPi * std::sqrt(-d_arg));
+    const double cos_term = 2.0 * std::cos(kPi * std::sqrt(-d_arg));
     const double scale = a_plus;
     const double num =
         (1.0 + safe_exp(-2.0 * a_plus)) -

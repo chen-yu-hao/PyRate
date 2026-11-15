@@ -5,7 +5,7 @@
 PyRate 不机械翻译 Fortran 全局数组，而是把 Polyrate 的职责拆成四层：
 
 1. **模型层**：`Atom`、`HinderedRotor`、`Species`、`PathPoint`、`Reaction`、`ReactionPath`、`TunnelingProfile` 和 `CalculationOptions`；
-2. **物理层**：谐振/Morse 非谐/Pitzer–Gwinn 受阻转子分区函数、标准 Gibbs 能、CTST/CVT/CUS、微正则 μVT/US、以及 CAG/Wigner/ZCT/SCT/Eckart/COMT/μOMT 隧穿修正；
+2. **物理层**：谐振/Morse 非谐/Pitzer–Gwinn 受阻转子分区函数、标准 Gibbs 能、CTST/CVT/CUS、微正则 μVT/US、以及 CAG/Wigner/ZCT/SCT/Eckart 隧穿修正（COMT/μOMT 在 LCT 实现前等同 SCT）；
 3. **数值层**：C++17 热点与 1:1 等价的 Python 回退；
 4. **适配层**：TOML、Polyrate `.dat + .fu40` 转换与执行器、`fu15` reference parser 和 CLI。
 

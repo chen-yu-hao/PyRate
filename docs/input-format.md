@@ -7,7 +7,7 @@
 name = "reaction name"
 temperatures_k = [200.0, 300.0, 600.0]
 method = "cvt"             # tst | cvt | cus | muvt | us | all
-tunneling = "sct"          # none | wigner | wkb | zct | mepsag | sct | cd-scsag | eckart | omt | comt | muomt
+tunneling = "sct"          # none | wigner | wkb | zct | mepsag | sct | cd-scsag | eckart | omt | comt | muomt（后三者在 LCT 实现前等同 sct）
 standard_pressure_bar = 1.0
 rate_unit = "cm^3 molecule^-1 s^-1"
 energy_grid_points = 400

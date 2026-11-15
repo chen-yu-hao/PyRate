@@ -181,8 +181,9 @@ def hindered_rotor_log_correction(rotor: HinderedRotor, temperature_k: float) ->
     )
     if rotor.moment_amu_angstrom2 is not None:
         inertia_kg_m2 = rotor.moment_amu_angstrom2 * AMU_KG * (ANGSTROM_M**2)
+        # Classical free internal rotor: Q_fr = sqrt(8 pi^3 I k_B T) / (sigma h).
         q_fr = (
-            math.sqrt(2.0 * math.pi * inertia_kg_m2 * BOLTZMANN_J_K * temperature_k)
+            math.sqrt(8.0 * math.pi**3 * inertia_kg_m2 * BOLTZMANN_J_K * temperature_k)
             / (float(rotor.symmetry_number) * PLANCK_J_S)
         )
     elif u > 0.0:
