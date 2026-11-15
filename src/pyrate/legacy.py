@@ -280,9 +280,7 @@ def parse_legacy_text(text: str, *, source: str | None = None) -> LegacyInput:
             continue
 
         if current is None:
-            raise LegacyParseError(
-                f"keyword outside a section at line {line_number}: {stripped!r}"
-            )
+            raise LegacyParseError(f"keyword outside a section at line {line_number}: {stripped!r}")
 
         tokens = stripped.split()
         keyword = tokens[0].upper()

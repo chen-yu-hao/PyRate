@@ -153,7 +153,9 @@ def compare_fu15_to_pyrate(
             raise ValueError("first-order and second-order rate units cannot be compared")
         if not math.isfinite(temp) or temp <= 0:
             raise ValueError("invalid PyRate temperature")
-        if any(abs(temp - old_temp) <= temperature_tolerance_k for old_temp, _, _ in by_temperature):
+        if any(
+            abs(temp - old_temp) <= temperature_tolerance_k for old_temp, _, _ in by_temperature
+        ):
             raise ValueError("ambiguous duplicate PyRate temperatures")
         by_temperature.append((temp, row, factor))
 
@@ -189,13 +191,21 @@ def compare_fu15_to_pyrate(
             else:
                 relative_error = abs(actual_si / expected_si - 1.0)
             status = (
-                "pass" if relative_error is not None and relative_error <= relative_tolerance
+                "pass"
+                if relative_error is not None and relative_error <= relative_tolerance
                 else "fail"
             )
-            points.append(ComparisonPoint(
-                column, field, temperature, status, expected,
-                actual if math.isfinite(actual) else None, relative_error,
-            ))
+            points.append(
+                ComparisonPoint(
+                    column,
+                    field,
+                    temperature,
+                    status,
+                    expected,
+                    actual if math.isfinite(actual) else None,
+                    relative_error,
+                )
+            )
 
     passed = sum(point.status == "pass" for point in points)
     failed = sum(point.status == "fail" for point in points)

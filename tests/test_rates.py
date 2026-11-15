@@ -20,7 +20,9 @@ from pyrate.rates import (
 )
 
 
-def model_species(name: str, energy: float, freqs: tuple[float, ...] = (500.0, 800.0, 1200.0)) -> Species:
+def model_species(
+    name: str, energy: float, freqs: tuple[float, ...] = (500.0, 800.0, 1200.0)
+) -> Species:
     return Species(
         name=name,
         mass_amu_override=30.0,
@@ -33,19 +35,13 @@ def model_species(name: str, energy: float, freqs: tuple[float, ...] = (500.0, 8
 
 def test_zero_barrier_unimolecular_eyring_prefactor() -> None:
     temperature = 300.0
-    rate = tst_rate_from_activation_gibbs_si(
-        0.0, temperature, 1, DEFAULT_STANDARD_PRESSURE_PA
-    )
-    assert math.isclose(
-        rate, BOLTZMANN_J_K * temperature / PLANCK_J_S, rel_tol=1.0e-14
-    )
+    rate = tst_rate_from_activation_gibbs_si(0.0, temperature, 1, DEFAULT_STANDARD_PRESSURE_PA)
+    assert math.isclose(rate, BOLTZMANN_J_K * temperature / PLANCK_J_S, rel_tol=1.0e-14)
 
 
 def test_zero_barrier_bimolecular_has_standard_concentration_factor() -> None:
     temperature = 300.0
-    rate = tst_rate_from_activation_gibbs_si(
-        0.0, temperature, 2, DEFAULT_STANDARD_PRESSURE_PA
-    )
+    rate = tst_rate_from_activation_gibbs_si(0.0, temperature, 2, DEFAULT_STANDARD_PRESSURE_PA)
     expected = (BOLTZMANN_J_K * temperature / PLANCK_J_S) / standard_concentration_mol_m3(
         temperature
     )
@@ -116,4 +112,3 @@ def test_cus_muvt_and_us_on_double_barrier_path() -> None:
     assert row.k_cus is not None and row.k_muvt is not None and row.k_us is not None
     assert row.equilibrium_kc is not None and row.k_reverse_final is not None
     assert math.isclose(row.k_final / row.k_reverse_final, row.equilibrium_kc, rel_tol=1.0e-12)
-

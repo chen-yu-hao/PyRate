@@ -80,9 +80,7 @@ def _with_calculation_defaults(
     return merged
 
 
-def parse_toml_data(
-    data: Mapping[str, Any], *, source: str | None = None
-) -> LoadedCalculation:
+def parse_toml_data(data: Mapping[str, Any], *, source: str | None = None) -> LoadedCalculation:
     calculation = _mapping(data.get("calculation", {}), "calculation")
     name = str(calculation.get("name", "PyRate calculation"))
 
@@ -122,9 +120,7 @@ def parse_toml_data(
             raise ValueError("[path] requires one or more [[path.points]] tables")
         points = tuple(
             PathPoint.from_mapping(
-                _with_calculation_defaults(
-                    _mapping(table, f"path.points[{index}]"), calculation
-                ),
+                _with_calculation_defaults(_mapping(table, f"path.points[{index}]"), calculation),
                 index,
             )
             for index, table in enumerate(point_tables)
@@ -176,9 +172,7 @@ def parse_toml_data(
         output_rate_unit=str(calculation.get("rate_unit", "auto")),
         tunneling_profile=tunneling_profile,
     )
-    return LoadedCalculation(
-        name=name, reaction=reaction, options=options, raw=data, source=source
-    )
+    return LoadedCalculation(name=name, reaction=reaction, options=options, raw=data, source=source)
 
 
 def load_toml(path: str | Path) -> LoadedCalculation:
@@ -271,7 +265,7 @@ def legacy_to_calculation(
     fu40_path: str | Path | None = None,
     fu40_text: str | None = None,
 ) -> LoadedCalculation:
-    """Translate a Polyrate ``.dat`` document plus companion ``.fu40`` data into a ``LoadedCalculation``."""
+    """Translate a Polyrate ``.dat`` document plus ``.fu40`` data into a ``LoadedCalculation``."""
 
     if fu40_document is None:
         if fu40_text is not None:
@@ -399,12 +393,10 @@ def legacy_to_calculation(
             dim = 3 * len(atoms)
             hessian = _unpack_fu40_hessian(fsec, dim, hessform=hessform)
             masses = [atom.mass_amu for atom in atoms]
-            nm = normal_modes(
-                hessian, masses, remove_rigid_modes=False, zero_threshold_cm1=0.0
+            nm = normal_modes(hessian, masses, remove_rigid_modes=False, zero_threshold_cm1=0.0)
+            n_vib = (3 * len(atoms) - 5 if rotor_type == "linear" else 3 * len(atoms) - 6) - (
+                1 if is_ts else 0
             )
-            n_vib = (
-                3 * len(atoms) - 5 if rotor_type == "linear" else 3 * len(atoms) - 6
-            ) - (1 if is_ts else 0)
             all_freqs = nm.frequencies_cm1
             if is_ts:
                 min_idx = int(np.argmin(all_freqs))
@@ -471,10 +463,10 @@ def legacy_to_calculation(
         )
         n_total_atoms = len(ordered_elements)
         dim_total = 3 * n_total_atoms
-        n_vib_path = (
-            3 * n_total_atoms - 6 if ts.rotor_type == "linear" else 3 * n_total_atoms - 7
-        )
-        raw_points: list[tuple[float, Species, np.ndarray | None, np.ndarray | None, tuple[float, ...]]] = []
+        n_vib_path = 3 * n_total_atoms - 6 if ts.rotor_type == "linear" else 3 * n_total_atoms - 7
+        raw_points: list[
+            tuple[float, Species, np.ndarray | None, np.ndarray | None, tuple[float, ...]]
+        ] = []
         for idx, pt_sec in enumerate(point_sections):
             s_entry = pt_sec.get("SMEP") or pt_sec.get("SVALUE")
             v_entry = pt_sec.get("VMEP") or pt_sec.get("VVALUE")
@@ -531,10 +523,7 @@ def legacy_to_calculation(
                 )
                 coords_m = (
                     np.asarray(
-                        [
-                            (atom.x_angstrom, atom.y_angstrom, atom.z_angstrom)
-                            for atom in pt_atoms
-                        ],
+                        [(atom.x_angstrom, atom.y_angstrom, atom.z_angstrom) for atom in pt_atoms],
                         dtype=float,
                     )
                     * ANGSTROM_M
@@ -560,7 +549,9 @@ def legacy_to_calculation(
                         if mw_grad_norm > 1.0e-12:
                             basis = np.column_stack([basis, mw_grad / mw_grad_norm])
                 projector = np.eye(dim_total) - basis @ basis.T
-                proj_h = 0.5 * (projector.T @ mw_hessian @ projector + (projector.T @ mw_hessian @ projector).T)
+                proj_h = 0.5 * (
+                    projector.T @ mw_hessian @ projector + (projector.T @ mw_hessian @ projector).T
+                )
                 evals, evecs = np.linalg.eigh(proj_h)
                 all_f = (
                     np.sign(evals)
@@ -627,8 +618,7 @@ def legacy_to_calculation(
                 right_b = path_points[idx0 + 1].curvatures_bohr_inv
                 if left_b and len(left_b) == len(right_b):
                     interp_b = tuple(
-                        0.5 * (abs(left_b[m]) + abs(right_b[m]))
-                        for m in range(len(left_b))
+                        0.5 * (abs(left_b[m]) + abs(right_b[m])) for m in range(len(left_b))
                     )
                     path_points[idx0] = PathPoint(
                         coordinate=0.0,
@@ -661,9 +651,7 @@ def legacy_to_calculation(
     else:
         tunneling = "none"
 
-    rate_unit = (
-        "cm^3 molecule^-1 s^-1" if len(reactants) == 2 else "s^-1"
-    )
+    rate_unit = "cm^3 molecule^-1 s^-1" if len(reactants) == 2 else "s^-1"
     reaction = Reaction(
         reactants=reactants,
         transition_state=ts,
@@ -683,4 +671,3 @@ def legacy_to_calculation(
         raw=document.as_dict(),
         source=document.source,
     )
-

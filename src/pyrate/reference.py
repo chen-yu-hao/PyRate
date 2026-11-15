@@ -154,9 +154,7 @@ def parse_fu15_summary(text: str) -> ReferenceRateTable:
             for r1, r2 in zip(rows, cont_rows, strict=False)
         ]
 
-    return ReferenceRateTable(
-        direction=direction, unit=unit, columns=columns, rows=tuple(rows)
-    )
+    return ReferenceRateTable(direction=direction, unit=unit, columns=columns, rows=tuple(rows))
 
 
 def load_fu15_summary(path: str | Path) -> ReferenceRateTable:

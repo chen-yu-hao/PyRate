@@ -22,12 +22,22 @@ FU15 = """
 
 def _result():
     factor = 1e-6 * AVOGADRO_MOL
-    return {"rows": [
-        {"temperature_k": 200., "k_tst": 1e-20 * factor,
-         "k_cvt": 1.5e-20 * factor, "rate_unit": "m^3 mol^-1 s^-1"},
-        {"temperature_k": 300., "k_tst": 2e-19 * factor,
-         "k_cvt": 2.5e-19 * factor, "rate_unit": "m^3 mol^-1 s^-1"},
-    ]}
+    return {
+        "rows": [
+            {
+                "temperature_k": 200.0,
+                "k_tst": 1e-20 * factor,
+                "k_cvt": 1.5e-20 * factor,
+                "rate_unit": "m^3 mol^-1 s^-1",
+            },
+            {
+                "temperature_k": 300.0,
+                "k_tst": 2e-19 * factor,
+                "k_cvt": 2.5e-19 * factor,
+                "rate_unit": "m^3 mol^-1 s^-1",
+            },
+        ]
+    }
 
 
 def test_all_forward_reverse_tables_are_preserved():
@@ -41,7 +51,10 @@ def test_units_and_explicit_method_mapping():
     report = compare_fu15_to_pyrate(parse_fu15_tables(FU15)[0], _result())
     assert report.success
     assert (report.compared, report.passed, report.failed, report.unmapped) == (4, 4, 0, 4)
-    assert max(point.relative_error for point in report.points if point.relative_error is not None) < 1e-12
+    assert (
+        max(point.relative_error for point in report.points if point.relative_error is not None)
+        < 1e-12
+    )
     assert not compare_fu15_to_pyrate(parse_fu15_tables(FU15)[0], _result(), strict=True).success
 
 
@@ -75,9 +88,7 @@ def test_mismatched_rate_dimensions_rejected():
 
 
 def test_no_comparable_columns_is_not_success():
-    report = compare_fu15_to_pyrate(
-        parse_fu15_tables(FU15)[0], _result(), column_map={}
-    )
+    report = compare_fu15_to_pyrate(parse_fu15_tables(FU15)[0], _result(), column_map={})
     assert report.compared == 0
     assert not report.success
 
@@ -261,4 +272,3 @@ def test_polyrate_2023_ch5fu40tr4_end_to_end_head_to_head():
     assert report.success
     assert report.passed == 12
     assert report.failed == 0
-

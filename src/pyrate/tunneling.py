@@ -44,9 +44,7 @@ def profile_wkb_kappa(profile: TunnelingProfile, temperature_k: float) -> float:
     """Return a canonical 1D WKB/ZCT or variable-mass SCT correction for a barrier profile."""
 
     coordinates_m = tuple(value * ANGSTROM_M for value in profile.coordinates_angstrom)
-    energies_j = tuple(
-        value * 1000.0 / AVOGADRO_MOL for value in profile.energies_kj_mol
-    )
+    energies_j = tuple(value * 1000.0 / AVOGADRO_MOL for value in profile.energies_kj_mol)
     if profile.effective_masses_amu is not None:
         masses_kg = tuple(m * AMU_KG for m in profile.effective_masses_amu)
         return thermal_wkb_profile_kappa(
@@ -73,15 +71,11 @@ def _kemble_probability(gamma: float) -> float:
     return 1.0 / (1.0 + math.exp(gamma))
 
 
-def profile_transmission_probability(
-    profile: TunnelingProfile, energy_kj_mol: float
-) -> float:
+def profile_transmission_probability(profile: TunnelingProfile, energy_kj_mol: float) -> float:
     """Return the Kemble uniform semiclassical transmission probability P(E)."""
 
     coordinates_m = tuple(value * ANGSTROM_M for value in profile.coordinates_angstrom)
-    energies_j = tuple(
-        value * 1000.0 / AVOGADRO_MOL for value in profile.energies_kj_mol
-    )
+    energies_j = tuple(value * 1000.0 / AVOGADRO_MOL for value in profile.energies_kj_mol)
     threshold_j = max(energies_j[0], energies_j[-1])
     barrier_j = max(energies_j)
     energy_j = energy_kj_mol * 1000.0 / AVOGADRO_MOL
@@ -102,9 +96,7 @@ def profile_transmission_probability(
         return 1.0
     if profile.effective_masses_amu is not None:
         masses_kg = tuple(m * AMU_KG for m in profile.effective_masses_amu)
-        gamma = wkb_exponent_profile(
-            coordinates_m, energies_j, reflected_energy_j, masses_kg
-        )
+        gamma = wkb_exponent_profile(coordinates_m, energies_j, reflected_energy_j, masses_kg)
     else:
         gamma = wkb_exponent(
             coordinates_m,
@@ -170,9 +162,7 @@ def _compute_cdscsag_effective_masses_amu(path: ReactionPath) -> tuple[float, ..
         return tuple(float(m) for m in explicit if m is not None)
 
     coords_bohr = [
-        point.coordinate / BOHR_ANGSTROM
-        if path.coordinate_unit == "angstrom"
-        else point.coordinate
+        point.coordinate / BOHR_ANGSTROM if path.coordinate_unit == "angstrom" else point.coordinate
         for point in path.points
     ]
     n_pts = len(path.points)
@@ -265,9 +255,7 @@ def path_tunneling_profile(
     energies_kj_mol = path_adiabatic_ground_potentials_kj_mol(path)
     normalized = method.lower()
     effective_masses = (
-        _compute_cdscsag_effective_masses_amu(path)
-        if normalized in {"sct", "cd-scsag"}
-        else None
+        _compute_cdscsag_effective_masses_amu(path) if normalized in {"sct", "cd-scsag"} else None
     )
     if _spline_usable(len(coordinates_angstrom), subdivisions):
         fine = refined_grid(coordinates_angstrom, subdivisions)
@@ -343,20 +331,17 @@ def reaction_eckart_kappa(
             "Eckart tunneling requires exactly one imaginary transition-state frequency"
         )
     v_reactants = sum(
-        sp.electronic_energy_kj_mol + zero_point_energy_kj_mol(sp)
-        for sp in reaction.reactants
+        sp.electronic_energy_kj_mol + zero_point_energy_kj_mol(sp) for sp in reaction.reactants
     )
-    v_ts = (
-        reaction.transition_state.electronic_energy_kj_mol
-        + zero_point_energy_kj_mol(reaction.transition_state)
+    v_ts = reaction.transition_state.electronic_energy_kj_mol + zero_point_energy_kj_mol(
+        reaction.transition_state
     )
     v1_kj_mol = v_ts - v_reactants
     if v1_kj_mol <= 0.0:
         return 1.0
     if reaction.products:
         v_products = sum(
-            sp.electronic_energy_kj_mol + zero_point_energy_kj_mol(sp)
-            for sp in reaction.products
+            sp.electronic_energy_kj_mol + zero_point_energy_kj_mol(sp) for sp in reaction.products
         )
         v2_kj_mol = v_ts - v_products
     elif reaction.path is not None:
@@ -368,9 +353,7 @@ def reaction_eckart_kappa(
         return 1.0
     v1_j = v1_kj_mol * 1000.0 / AVOGADRO_MOL
     v2_j = v2_kj_mol * 1000.0 / AVOGADRO_MOL
-    return thermal_eckart_kappa(
-        v1_j, v2_j, abs(imaginary[0]), temperature_k, energy_grid_points
-    )
+    return thermal_eckart_kappa(v1_j, v2_j, abs(imaginary[0]), temperature_k, energy_grid_points)
 
 
 def profile_muomt_kappa(
@@ -404,4 +387,3 @@ def profile_muomt_kappa(
     for idx in range(1, count):
         total += (2.0 if idx % 2 == 0 else 4.0) * integrand(threshold_kj + idx * step_kj)
     return 1.0 + step_kj * total / 3.0
-

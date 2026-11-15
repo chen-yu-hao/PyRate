@@ -24,10 +24,17 @@ def main() -> int:
     parser.add_argument("reference", type=Path, help="Polyrate .fu15 reference file")
     parser.add_argument("result", type=Path, help="PyRate --format json result")
     parser.add_argument("--direction", choices=("forward", "reverse"), default="forward")
-    parser.add_argument("--column", action="append", default=[], metavar="REF=FIELD",
-                        help="explicit map, e.g. CVT=k_cvt; repeatable (defaults TST, CVT)")
+    parser.add_argument(
+        "--column",
+        action="append",
+        default=[],
+        metavar="REF=FIELD",
+        help="explicit map, e.g. CVT=k_cvt; repeatable (defaults TST, CVT)",
+    )
     parser.add_argument("--rtol", type=float, default=5.0e-3)
-    parser.add_argument("--strict", action="store_true", help="fail on any unmapped reference column")
+    parser.add_argument(
+        "--strict", action="store_true", help="fail on any unmapped reference column"
+    )
     parser.add_argument("--output", type=Path, help="optional JSON report file")
     args = parser.parse_args()
 
@@ -47,8 +54,11 @@ def main() -> int:
             column, field = pair.split("=", 1)
             mapping[column.strip().upper()] = field.strip()
         report = compare_fu15_to_pyrate(
-            selected[0], result, column_map=mapping,
-            relative_tolerance=args.rtol, strict=args.strict,
+            selected[0],
+            result,
+            column_map=mapping,
+            relative_tolerance=args.rtol,
+            strict=args.strict,
         )
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
         parser.exit(2, f"comparison error: {exc}\n")

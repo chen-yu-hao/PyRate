@@ -208,7 +208,9 @@ def atomic_mass_amu(label: str, *, mass_convention: str = "iupac") -> float:
     stripped = label.strip()
     iso_match = re.match(r"^(\d+)([A-Za-z]{1,2})$", stripped)
     if iso_match:
-        iso_key = f"{iso_match.group(1)}{iso_match.group(2)[0].upper()}{iso_match.group(2)[1:].lower()}"
+        iso_key = (
+            f"{iso_match.group(1)}{iso_match.group(2)[0].upper()}{iso_match.group(2)[1:].lower()}"
+        )
         if iso_key in ISOTOPE_MASSES_AMU:
             if mass_convention.lower() == "polyrate" and iso_key == "2H":
                 return POLYRATE_ATOMIC_MASSES_AMU["D"]
@@ -225,7 +227,4 @@ def atomic_mass_amu(label: str, *, mass_convention: str = "iupac") -> float:
     try:
         return table[symbol]
     except KeyError as exc:
-        raise ValueError(
-            f"no built-in mass for {label!r}; provide mass_amu explicitly"
-        ) from exc
-
+        raise ValueError(f"no built-in mass for {label!r}; provide mass_amu explicitly") from exc

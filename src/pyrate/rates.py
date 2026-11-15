@@ -54,9 +54,7 @@ def activation_gibbs_kj_mol(
         dividing_surface, temperature_k, reaction.standard_pressure_pa
     )
     reactant_gibbs = sum(
-        standard_gibbs_energy_kj_mol(
-            reactant, temperature_k, reaction.standard_pressure_pa
-        )
+        standard_gibbs_energy_kj_mol(reactant, temperature_k, reaction.standard_pressure_pa)
         for reactant in reaction.reactants
     )
     return transition_gibbs - reactant_gibbs
@@ -102,12 +100,8 @@ def log_tst_rate_si(
     if molecularity not in {1, 2}:
         raise NotImplementedError("only uni- and bimolecular rates are supported")
     log_prefactor = math.log(BOLTZMANN_J_K * temperature_k / PLANCK_J_S)
-    log_boltzmann = -activation_gibbs_kj_mol_value * 1000.0 / (
-        GAS_CONSTANT_J_MOL_K * temperature_k
-    )
-    concentration = standard_concentration_mol_m3(
-        temperature_k, standard_pressure_pa
-    )
+    log_boltzmann = -activation_gibbs_kj_mol_value * 1000.0 / (GAS_CONSTANT_J_MOL_K * temperature_k)
+    concentration = standard_concentration_mol_m3(temperature_k, standard_pressure_pa)
     return log_prefactor + log_boltzmann + (1 - molecularity) * math.log(concentration)
 
 
@@ -133,9 +127,7 @@ def tst_rate_from_activation_gibbs_si(
 def conventional_tst_rate_si(reaction: Reaction, temperature_k: float) -> tuple[float, float]:
     """Return ``(ΔG‡, k_TST)`` for the designated transition state."""
 
-    delta_g = activation_gibbs_kj_mol(
-        reaction, reaction.transition_state, temperature_k
-    )
+    delta_g = activation_gibbs_kj_mol(reaction, reaction.transition_state, temperature_k)
     rate = tst_rate_from_activation_gibbs_si(
         delta_g,
         temperature_k,
@@ -157,9 +149,7 @@ def cvt_rate_si(reaction: Reaction, temperature_k: float) -> CvtRate:
         raise ValueError("CVT requires reaction.path")
     coordinates = [point.coordinate for point in reaction.path.points]
     activation_gibbs = [
-        activation_gibbs_kj_mol(
-            reaction, point.dividing_surface, temperature_k
-        )
+        activation_gibbs_kj_mol(reaction, point.dividing_surface, temperature_k)
         for point in reaction.path.points
     ]
     refined: RefinedMaximum = refine_maximum(coordinates, activation_gibbs)
@@ -241,9 +231,7 @@ def cus_rate_si(
     for k in range(len(local_max_indices) - 1):
         left_idx = local_max_indices[k]
         right_idx = local_max_indices[k + 1]
-        min_idx = min(
-            range(left_idx, right_idx + 1), key=lambda i: activation_gibbs[i]
-        )
+        min_idx = min(range(left_idx, right_idx + 1), key=lambda i: activation_gibbs[i])
         if 0 < min_idx < n_pts - 1:
             window_x = coordinates[min_idx - 1 : min_idx + 2]
             window_y = activation_gibbs[min_idx - 1 : min_idx + 2]
@@ -268,11 +256,7 @@ def cus_rate_si(
         if k_min > 0.0:
             inv_cus -= 1.0 / k_min
 
-    cus_rate = (
-        1.0 / inv_cus
-        if inv_cus > 0.0
-        else cvt_rate_si(reaction, temperature_k).rate_si
-    )
+    cus_rate = 1.0 / inv_cus if inv_cus > 0.0 else cvt_rate_si(reaction, temperature_k).rate_si
     return CusRate(
         rate_si=cus_rate,
         maxima_coordinates=tuple(max_coords),
@@ -295,7 +279,6 @@ def muvt_and_us_rates_si(
     cvt = cvt_result if cvt_result is not None else cvt_rate_si(reaction, temperature_k)
     gamma_muvt, gamma_us = microcanonical_path_factors(reaction.path, temperature_k)
     return cvt.rate_si * gamma_muvt, cvt.rate_si * gamma_us
-
 
 
 def canonical_rate_unit(molecularity: int) -> str:

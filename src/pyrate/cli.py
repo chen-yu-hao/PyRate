@@ -59,8 +59,7 @@ def format_table(result: CalculationResult) -> str:
         "  ".join("-" * width for width in widths),
     ]
     lines.extend(
-        "  ".join(value.rjust(widths[index]) for index, value in enumerate(row))
-        for row in rows
+        "  ".join(value.rjust(widths[index]) for index, value in enumerate(row)) for row in rows
     )
     return "\n".join(lines) + "\n"
 
@@ -157,14 +156,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_parser = subparsers.add_parser("run", help="run a PyRate TOML or Polyrate .dat+.fu40 calculation")
+    run_parser = subparsers.add_parser(
+        "run", help="run a PyRate TOML or Polyrate .dat+.fu40 calculation"
+    )
     run_parser.add_argument("input", help="input TOML or Polyrate .dat file")
     run_parser.add_argument(
         "--fu40", help="companion Polyrate unit-40 (.fu40) electronic-structure file"
     )
-    run_parser.add_argument(
-        "--format", choices=("table", "json", "csv"), default="table"
-    )
+    run_parser.add_argument("--format", choices=("table", "json", "csv"), default="table")
     run_parser.add_argument("-o", "--output", help="output path; default is stdout")
     run_parser.add_argument(
         "--rate-unit",
@@ -188,9 +187,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("input")
     validate_parser.set_defaults(handler=_validate_command)
 
-    native_parser = subparsers.add_parser(
-        "native-info", help="show the active numerical backend"
-    )
+    native_parser = subparsers.add_parser("native-info", help="show the active numerical backend")
     native_parser.set_defaults(handler=_native_info_command)
     return parser
 

@@ -74,9 +74,7 @@ def rovibrational_sum_of_states(
         return np.zeros(n_grains, dtype=float)
 
     active_grains = n_grains - shift_grains
-    vib_density = beyer_swinehart(
-        species.positive_frequencies_cm1, grain_cm1, active_grains
-    )
+    vib_density = beyer_swinehart(species.positive_frequencies_cm1, grain_cm1, active_grains)
     geometry = rotor_geometry(species)
     sigma = float(species.symmetry_number)
     g_elec = float(species.electronic_states[0].degeneracy) if species.electronic_states else 1.0
@@ -152,8 +150,7 @@ def microcanonical_path_factors(
     """
 
     vag_values = [
-        pt.dividing_surface.electronic_energy_kj_mol
-        + zero_point_energy_kj_mol(pt.dividing_surface)
+        pt.dividing_surface.electronic_energy_kj_mol + zero_point_energy_kj_mol(pt.dividing_surface)
         for pt in path.points
     ]
     vag_min = min(vag_values)
@@ -190,10 +187,12 @@ def microcanonical_path_factors(
     gamma_muvt = min(1.0, max(0.0, muvt_integral / min_surface_integral))
 
     n_us = np.array(
-        [_unified_statistical_sum_of_states_1d(n_matrix[:, col]) for col in range(n_matrix.shape[1])],
+        [
+            _unified_statistical_sum_of_states_1d(n_matrix[:, col])
+            for col in range(n_matrix.shape[1])
+        ],
         dtype=float,
     )
     us_integral = float(np.dot(n_us, boltzmann))
     gamma_us = min(gamma_muvt, max(0.0, us_integral / min_surface_integral))
     return gamma_muvt, gamma_us
-

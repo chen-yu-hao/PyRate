@@ -87,9 +87,12 @@ def log_rotational_partition(species: Species, temperature_k: float) -> float:
     else:
         if any(moment <= 1.0e-52 for moment in moments):
             raise ValueError(f"nonlinear species {species.name!r} requires three nonzero moments")
-        q_rot = math.sqrt(math.pi) * (prefactor**1.5) * math.sqrt(
-            moments[0] * moments[1] * moments[2]
-        ) / sigma
+        q_rot = (
+            math.sqrt(math.pi)
+            * (prefactor**1.5)
+            * math.sqrt(moments[0] * moments[1] * moments[2])
+            / sigma
+        )
     if q_rot <= 0.0 or not math.isfinite(q_rot):
         raise ValueError(f"invalid rotational partition function for {species.name!r}")
     return math.log(q_rot)
@@ -103,42 +106,22 @@ def _scaled_bessel_i0(u: float) -> float:
         t = (x / 3.75) ** 2
         i0 = 1.0 + t * (
             3.5156229
-            + t
-            * (
-                3.0899424
-                + t
-                * (
-                    1.2067492
-                    + t * (0.2659732 + t * (0.0360768 + t * 0.0045813))
-                )
-            )
+            + t * (3.0899424 + t * (1.2067492 + t * (0.2659732 + t * (0.0360768 + t * 0.0045813))))
         )
         return math.exp(-x) * i0
     t = 3.75 / x
-    poly = (
-        0.39894228
+    poly = 0.39894228 + t * (
+        0.01328592
         + t
         * (
-            0.01328592
+            0.00225319
             + t
             * (
-                0.00225319
+                -0.00157565
                 + t
                 * (
-                    -0.00157565
-                    + t
-                    * (
-                        0.00916281
-                        + t
-                        * (
-                            -0.02057706
-                            + t
-                            * (
-                                0.02635537
-                                + t * (-0.01647633 + t * 0.00392377)
-                            )
-                        )
-                    )
+                    0.00916281
+                    + t * (-0.02057706 + t * (0.02635537 + t * (-0.01647633 + t * 0.00392377)))
                 )
             )
         )
@@ -176,15 +159,14 @@ def hindered_rotor_log_correction(rotor: HinderedRotor, temperature_k: float) ->
         raise ValueError("temperature must be positive")
     u = (rotor.barrier_kj_mol * 1000.0) / (2.0 * GAS_CONSTANT_J_MOL_K * temperature_k)
     bessel_factor = _scaled_bessel_i0(u)
-    q_class_ho = BOLTZMANN_J_K * temperature_k / (
-        PLANCK_J_S * LIGHT_SPEED_M_S * 100.0 * rotor.frequency_cm1
+    q_class_ho = (
+        BOLTZMANN_J_K * temperature_k / (PLANCK_J_S * LIGHT_SPEED_M_S * 100.0 * rotor.frequency_cm1)
     )
     if rotor.moment_amu_angstrom2 is not None:
         inertia_kg_m2 = rotor.moment_amu_angstrom2 * AMU_KG * (ANGSTROM_M**2)
         # Classical free internal rotor: Q_fr = sqrt(8 pi^3 I k_B T) / (sigma h).
-        q_fr = (
-            math.sqrt(8.0 * math.pi**3 * inertia_kg_m2 * BOLTZMANN_J_K * temperature_k)
-            / (float(rotor.symmetry_number) * PLANCK_J_S)
+        q_fr = math.sqrt(8.0 * math.pi**3 * inertia_kg_m2 * BOLTZMANN_J_K * temperature_k) / (
+            float(rotor.symmetry_number) * PLANCK_J_S
         )
     elif u > 0.0:
         q_fr = q_class_ho * math.sqrt(2.0 * math.pi * u)
@@ -195,7 +177,7 @@ def hindered_rotor_log_correction(rotor: HinderedRotor, temperature_k: float) ->
 
 
 def log_vibrational_partition(species: Species, temperature_k: float) -> float:
-    """Log vibrational partition function (with optional Morse anharmonicity and hindered rotors)."""
+    """Log vibrational partition function with optional Morse and hindered-rotor terms."""
 
     if temperature_k <= 0.0:
         raise ValueError("temperature must be positive")
@@ -204,9 +186,7 @@ def log_vibrational_partition(species: Species, temperature_k: float) -> float:
         total = 0.0
         for idx, freq in enumerate(frequencies):
             x_e = (
-                species.anharmonicities_cm1[idx]
-                if idx < len(species.anharmonicities_cm1)
-                else 0.0
+                species.anharmonicities_cm1[idx] if idx < len(species.anharmonicities_cm1) else 0.0
             )
             total += morse_mode_log_partition(freq, x_e, temperature_k)
     else:
@@ -277,12 +257,8 @@ def standard_gibbs_energy_kj_mol(
     ideal-gas volume per molecule corresponding to ``standard_pressure_pa``.
     """
 
-    log_partition = partition_components(
-        species, temperature_k, standard_pressure_pa
-    ).total
-    thermal_kj_mol = (
-        GAS_CONSTANT_J_MOL_K * temperature_k * log_partition / 1000.0
-    )
+    log_partition = partition_components(species, temperature_k, standard_pressure_pa).total
+    thermal_kj_mol = GAS_CONSTANT_J_MOL_K * temperature_k * log_partition / 1000.0
     return species.electronic_energy_kj_mol + zero_point_energy_kj_mol(species) - thermal_kj_mol
 
 

@@ -54,13 +54,7 @@ def harmonic_log_partition(frequencies_cm1: Iterable[float], temperature_k: floa
     for frequency in frequencies:
         if frequency <= 0.0:
             continue
-        ratio = (
-            PLANCK_J_S
-            * LIGHT_SPEED_M_S
-            * 100.0
-            * frequency
-            / (BOLTZMANN_J_K * temperature_k)
-        )
+        ratio = PLANCK_J_S * LIGHT_SPEED_M_S * 100.0 * frequency / (BOLTZMANN_J_K * temperature_k)
         total -= math.log1p(-math.exp(-ratio))
     return total
 
@@ -93,9 +87,7 @@ def refine_maximum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
         coordinate, value, sample_index, fit_points = _cpp.refine_maximum(
             x_values.tolist(), y_values.tolist()
         )
-        return RefinedMaximum(
-            float(coordinate), float(value), int(sample_index), int(fit_points)
-        )
+        return RefinedMaximum(float(coordinate), float(value), int(sample_index), int(fit_points))
 
     maximum_index = int(np.argmax(y_values))
     if x_values.size < 3 or maximum_index in {0, x_values.size - 1}:
@@ -121,7 +113,9 @@ def refine_maximum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
         for root in roots
         if abs(float(root.imag)) < 1.0e-10 and t[0] <= root.real <= t[-1]
     )
-    values = [float(np.polynomial.polynomial.polyval(candidate, coefficients)) for candidate in candidates]
+    values = [
+        float(np.polynomial.polynomial.polyval(candidate, coefficients)) for candidate in candidates
+    ]
     best = int(np.argmax(values))
     best_value = values[best]
     local_span = float(np.ptp(local_y))
@@ -129,9 +123,7 @@ def refine_maximum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
         1.0, local_span
     ):
         return RefinedMaximum(center, float(y_values[maximum_index]), maximum_index, 1)
-    return RefinedMaximum(
-        center + scale * candidates[best], best_value, maximum_index, count
-    )
+    return RefinedMaximum(center + scale * candidates[best], best_value, maximum_index, count)
 
 
 def refine_minimum(x: Sequence[float], y: Sequence[float]) -> RefinedMaximum:
@@ -199,7 +191,11 @@ def wkb_exponent_profile(
     coordinates = tuple(float(value) for value in coordinates_m)
     potentials = tuple(float(value) for value in potentials_j_per_molecule)
     masses = tuple(float(value) for value in effective_masses_kg)
-    if len(coordinates) != len(potentials) or len(coordinates) != len(masses) or len(coordinates) < 2:
+    if (
+        len(coordinates) != len(potentials)
+        or len(coordinates) != len(masses)
+        or len(coordinates) < 2
+    ):
         raise ValueError(
             "coordinates, potentials, and effective_masses require matching lengths >= 2"
         )
@@ -209,9 +205,7 @@ def wkb_exponent_profile(
         raise ValueError("effective masses must be positive")
     if HAS_NATIVE:
         return float(
-            _cpp.wkb_exponent_profile(
-                coordinates, potentials, float(energy_j_per_molecule), masses
-            )
+            _cpp.wkb_exponent_profile(coordinates, potentials, float(energy_j_per_molecule), masses)
         )
     integral = 0.0
     for index in range(1, len(coordinates)):
@@ -308,7 +302,11 @@ def thermal_wkb_profile_kappa(
     coordinates = tuple(float(value) for value in coordinates_m)
     potentials = tuple(float(value) for value in potentials_j_per_molecule)
     masses = tuple(float(value) for value in effective_masses_kg)
-    if len(coordinates) != len(potentials) or len(coordinates) != len(masses) or len(coordinates) < 3:
+    if (
+        len(coordinates) != len(potentials)
+        or len(coordinates) != len(masses)
+        or len(coordinates) < 3
+    ):
         raise ValueError(
             "coordinates, potentials, and effective_masses require matching lengths >= 3"
         )
@@ -381,10 +379,7 @@ def eckart_transmission(
     a_plus = two_pi_alpha + two_pi_beta
     a_minus = abs(two_pi_alpha - two_pi_beta)
     d_arg = (
-        16.0
-        * barrier_forward_j_per_molecule
-        * barrier_reverse_j_per_molecule
-        / (u_star * u_star)
+        16.0 * barrier_forward_j_per_molecule * barrier_reverse_j_per_molecule / (u_star * u_star)
         - 1.0
     )
     if d_arg >= 0.0:
@@ -470,4 +465,3 @@ def beyer_swinehart(
         for index in range(step, grain_count):
             density[index] += density[index - step]
     return density
-

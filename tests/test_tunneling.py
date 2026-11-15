@@ -102,7 +102,9 @@ def test_sct_curvature_reduces_effective_mass_and_enhances_muomt() -> None:
 
 def test_cag_and_reaction_eckart_kappa() -> None:
     r = Species(name="R", mass_amu_override=10.0, rotor_type="atomic", electronic_energy_kj_mol=0.0)
-    p = Species(name="P", mass_amu_override=10.0, rotor_type="atomic", electronic_energy_kj_mol=-5.0)
+    p = Species(
+        name="P", mass_amu_override=10.0, rotor_type="atomic", electronic_energy_kj_mol=-5.0
+    )
     ts = Species(
         name="TS",
         mass_amu_override=10.0,
@@ -111,14 +113,40 @@ def test_cag_and_reaction_eckart_kappa() -> None:
         frequencies_cm1=(1000.0, -1200.0),
     )
     pts = (
-        PathPoint(-0.5, Species(name="p1", mass_amu_override=10.0, rotor_type="atomic", electronic_energy_kj_mol=15.0, frequencies_cm1=(1000.0,))),
+        PathPoint(
+            -0.5,
+            Species(
+                name="p1",
+                mass_amu_override=10.0,
+                rotor_type="atomic",
+                electronic_energy_kj_mol=15.0,
+                frequencies_cm1=(1000.0,),
+            ),
+        ),
         PathPoint(0.0, ts),
-        PathPoint(0.3, Species(name="p2", mass_amu_override=10.0, rotor_type="atomic", electronic_energy_kj_mol=32.0, frequencies_cm1=(1000.0,))),
-        PathPoint(0.8, Species(name="p3", mass_amu_override=10.0, rotor_type="atomic", electronic_energy_kj_mol=10.0, frequencies_cm1=(1000.0,))),
+        PathPoint(
+            0.3,
+            Species(
+                name="p2",
+                mass_amu_override=10.0,
+                rotor_type="atomic",
+                electronic_energy_kj_mol=32.0,
+                frequencies_cm1=(1000.0,),
+            ),
+        ),
+        PathPoint(
+            0.8,
+            Species(
+                name="p3",
+                mass_amu_override=10.0,
+                rotor_type="atomic",
+                electronic_energy_kj_mol=10.0,
+                frequencies_cm1=(1000.0,),
+            ),
+        ),
     )
     rxn = Reaction(reactants=(r,), transition_state=ts, products=(p,), path=ReactionPath(pts))
     cag_0 = cag_kappa(rxn, 300.0, variational_coordinate=0.0)
     assert cag_0 < 1.0
     eck = reaction_eckart_kappa(rxn, 300.0)
     assert eck > 1.0
-

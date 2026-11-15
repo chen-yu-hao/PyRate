@@ -20,7 +20,7 @@
 | CUS (Canonical Unified Statistical) | Implemented | 多重自由能极大值与中间极小值的统一统计修正 |
 | CAG (Classical Adiabatic Ground-State) | Implemented | $\kappa^{\text{CAG}}_{\text{TST}}$ 与 $\kappa^{\text{CAG}}_{\text{CVT}}$ |
 | Wigner | Implemented | 单一虚频 |
-| ZCT / MEPSAG | Implemented | 沿 MEP 振动绝热基态势 $V_a^G(s)$ 的 Kemble 均匀半经典 WKB 与 `BOLTZ` 非经典反射 |
+| ZCT / MEPSAG | Implemented | 沿 MEP 振动绝热基态势 $V_a^G(s)$ 的 Kemble 均匀半经典 WKB 与 `BOLTZ` 非经典反射；作用量积分前将 $V_a^G(s)$ 以三次样条（not-a-knot）加密 8 倍；隧穿能量下限取路径两端而非反应物/产物渐近值，路径过短时低能隧穿会被低估 |
 | SCT / CD-SCSAG | Implemented | 反应路径曲率 $B_{mF}(s)$、`TPCDSC` 离心拐点与位置相关有效质量 $\mu_{\text{eff}}(s)$ 积分 |
 | Eckart 隧穿 | Implemented | 对称与非对称 Eckart 解析透射系数与热平均 |
 | COMT / μOMT | Partial | 仅在 ZCT 与 SCT 候选间逐温度或逐能量择优；由于尚无 LCT 且 $\mu_{\text{eff}}(s) \le \mu$，当前结果恒等于 SCT，**不能**与 Polyrate 的 `CVT/COMT`、`CVT/mOMT` 列等同。待 LCT 实现后升级 |
@@ -29,7 +29,7 @@
 | μVT / US | Implemented | Beyer–Swinehart 振动态计数与经典转动态和 $N_{\text{rv}}(E, s)$，能量分辨最小通量与统一统计 |
 | Hindered rotor | Implemented | Pitzer–Gwinn 与 Polyrate `BES0` 修正贝塞尔函数扭转内旋转修正 |
 | Morse / anharmonic vibration | Implemented | 一阶非谐常数 $\omega_e x_e$ 精确有界 Morse 能级梯与非谐 ZPE（QQ 待定） |
-| `fu40` 电子结构路径文件 | Implemented | 支持 `freqsource read` 与 `freqsource hessian`（紧缩/全矩阵）、`PROJCT` 梯度投影与 `RPHB` 曲率计算 |
+| `fu40` 电子结构路径文件 | Implemented | 支持 `freqsource read` 与 `freqsource hessian`（紧缩/全矩阵）、`PROJCT` 梯度投影与 `RPHB` 曲率计算；几何单位仅支持 bohr/ang，梯度与 Hessian 仅支持 hartree/bohr、hartree/bohr²，质量加权（`msbohr`/`msang`）与 `si` 单位会报错而非被误读 |
 | MEP integration / Page–McIver / Euler | Planned | 当前读取预计算路径点或 `.fu40`；势能面上直接步进积分待实现 |
 | Direct dynamics hooks (`POT`) | Planned | 尚无编译期 Fortran 势能面（77 个算例）或 Gaussian/GAMESS 实时调用适配器 |
 | Dual-level correction / ISPE | Planned | 尚未实现 `fu50/fu51` 路径双层能量插值校正 |

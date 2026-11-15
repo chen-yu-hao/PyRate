@@ -46,9 +46,7 @@ def _hessian_to_si(
     raise ValueError(f"unsupported Hessian unit {unit!r}")
 
 
-def _rigid_basis(
-    masses_kg: FloatArray, coordinates_m: FloatArray
-) -> tuple[FloatArray, int]:
+def _rigid_basis(masses_kg: FloatArray, coordinates_m: FloatArray) -> tuple[FloatArray, int]:
     center = np.sum(coordinates_m * masses_kg[:, None], axis=0) / masses_kg.sum()
     centered = coordinates_m - center
     vectors: list[FloatArray] = []
@@ -72,9 +70,7 @@ def normal_modes(
     masses_amu: Sequence[float],
     *,
     coordinates_angstrom: Sequence[Sequence[float]] | FloatArray | None = None,
-    hessian_unit: Literal[
-        "hartree/bohr^2", "j/m^2", "kj/mol/angstrom^2"
-    ] = "hartree/bohr^2",
+    hessian_unit: Literal["hartree/bohr^2", "j/m^2", "kj/mol/angstrom^2"] = "hartree/bohr^2",
     remove_rigid_modes: bool = True,
     zero_threshold_cm1: float = 10.0,
 ) -> NormalModeResult:
@@ -99,9 +95,7 @@ def normal_modes(
 
     hessian_si = _hessian_to_si(matrix, hessian_unit)
     coordinate_masses = np.repeat(masses * AMU_KG, 3)
-    mass_weighted = hessian_si / np.sqrt(
-        coordinate_masses[:, None] * coordinate_masses[None, :]
-    )
+    mass_weighted = hessian_si / np.sqrt(coordinate_masses[:, None] * coordinate_masses[None, :])
 
     rigid_count = 0
     if remove_rigid_modes:

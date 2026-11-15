@@ -49,7 +49,9 @@ class Atom:
         return (self.x_angstrom, self.y_angstrom, self.z_angstrom)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], *, default_mass_convention: str = "iupac") -> Atom:
+    def from_mapping(
+        cls, data: Mapping[str, Any], *, default_mass_convention: str = "iupac"
+    ) -> Atom:
         xyz = data.get("xyz") or data.get("coordinates_angstrom")
         if xyz is None or len(xyz) != 3:
             raise ValueError("each atom requires xyz = [x, y, z]")
@@ -183,10 +185,12 @@ class Species:
         if self.mass_amu_override is not None and self.mass_amu_override <= 0.0:
             raise ValueError("mass_amu must be positive")
         if not self.atoms and self.mass_amu_override is None:
-            raise ValueError(
-                f"species {self.name!r} requires atoms or mass_amu"
-            )
-        if not self.atoms and self.moments_of_inertia_amu_a2 is None and self.rotor_type != "atomic":
+            raise ValueError(f"species {self.name!r} requires atoms or mass_amu")
+        if (
+            not self.atoms
+            and self.moments_of_inertia_amu_a2 is None
+            and self.rotor_type != "atomic"
+        ):
             raise ValueError(
                 f"species {self.name!r} without atoms requires moments_of_inertia_amu_a2 "
                 "or rotor_type = 'atomic'"
@@ -240,7 +244,9 @@ class Species:
         return cls(
             name=str(data.get("name", default_name)),
             atoms=atoms,
-            mass_amu_override=(float(data["mass_amu"]) if data.get("mass_amu") is not None else None),
+            mass_amu_override=(
+                float(data["mass_amu"]) if data.get("mass_amu") is not None else None
+            ),
             electronic_energy_kj_mol=float(
                 data.get("electronic_energy_kj_mol", data.get("energy_kj_mol", 0.0))
             ),
@@ -260,7 +266,9 @@ class Species:
                 if data.get("frequency_floor_cm1") is not None
                 else None
             ),
-            anharmonicities_cm1=tuple(float(value) for value in data.get("anharmonicities_cm1", ())),
+            anharmonicities_cm1=tuple(
+                float(value) for value in data.get("anharmonicities_cm1", ())
+            ),
             hindered_rotors=rotors,
             metadata=dict(data.get("metadata", {})),
         )
@@ -440,4 +448,3 @@ class CalculationOptions:
         object.__setattr__(self, "temperatures_k", temperatures)
         object.__setattr__(self, "method", method)
         object.__setattr__(self, "tunneling", tunneling)
-

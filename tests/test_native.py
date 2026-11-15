@@ -104,7 +104,6 @@ def test_eckart_transmission_and_thermal_kappa() -> None:
     assert math.isfinite(kappa)
 
 
-
 def test_eckart_matches_parabolic_and_wigner_limits() -> None:
     """Guard the Johnston-Heicklen prefactors against analytic limits."""
 
@@ -137,7 +136,5 @@ def test_eckart_matches_parabolic_and_wigner_limits() -> None:
         3.2462,
         rel_tol=2.0e-3,
     )
-    asym = thermal_eckart_kappa(
-        40.0e3 / AVOGADRO_MOL, 60.0e3 / AVOGADRO_MOL, 1500.0, 300.0, 2000
-    )
+    asym = thermal_eckart_kappa(40.0e3 / AVOGADRO_MOL, 60.0e3 / AVOGADRO_MOL, 1500.0, 300.0, 2000)
     assert math.isclose(asym, 14.521, rel_tol=2.0e-3)

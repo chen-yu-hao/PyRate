@@ -103,9 +103,7 @@ def build_manifest(root: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path, help="extracted Polyrate distribution root")
-    parser.add_argument(
-        "--output", type=Path, default=Path("reference/manifest.json")
-    )
+    parser.add_argument("--output", type=Path, default=Path("reference/manifest.json"))
     args = parser.parse_args()
     root = args.root.resolve()
     if not root.is_dir():

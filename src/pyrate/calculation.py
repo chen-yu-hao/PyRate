@@ -92,7 +92,8 @@ def calculate_rates(
         and reaction.path is None
     ):
         raise ValueError(
-            f"tunneling = {options.tunneling!r} requires either a tunneling_profile or a reaction path"
+            f"tunneling = {options.tunneling!r} requires either a tunneling_profile "
+            "or a reaction path"
         )
 
     rate_unit = normalize_rate_unit(options.output_rate_unit, reaction.molecularity)
@@ -115,9 +116,7 @@ def calculate_rates(
 
     for temperature in options.temperatures_k:
         delta_g_tst, k_tst_si = conventional_tst_rate_si(reaction, temperature)
-        k_tst, _ = convert_rate_from_si(
-            k_tst_si, reaction.molecularity, rate_unit
-        )
+        k_tst, _ = convert_rate_from_si(k_tst_si, reaction.molecularity, rate_unit)
 
         delta_g_cvt: float | None = None
         cvt_coordinate: float | None = None
@@ -141,36 +140,22 @@ def calculate_rates(
             sample_coordinate = cvt.sampled_coordinate
             cvt_fit_points = cvt.fit_points
             k_cvt_si = cvt.rate_si
-            k_cvt, _ = convert_rate_from_si(
-                k_cvt_si, reaction.molecularity, rate_unit
-            )
+            k_cvt, _ = convert_rate_from_si(k_cvt_si, reaction.molecularity, rate_unit)
 
             cus = cus_rate_si(reaction, temperature)
             k_cus_si = cus.rate_si
-            k_cus, _ = convert_rate_from_si(
-                k_cus_si, reaction.molecularity, rate_unit
-            )
+            k_cus, _ = convert_rate_from_si(k_cus_si, reaction.molecularity, rate_unit)
 
-            k_muvt_si, k_us_si = muvt_and_us_rates_si(
-                reaction, temperature, cvt_result=cvt
-            )
-            k_muvt, _ = convert_rate_from_si(
-                k_muvt_si, reaction.molecularity, rate_unit
-            )
-            k_us, _ = convert_rate_from_si(
-                k_us_si, reaction.molecularity, rate_unit
-            )
+            k_muvt_si, k_us_si = muvt_and_us_rates_si(reaction, temperature, cvt_result=cvt)
+            k_muvt, _ = convert_rate_from_si(k_muvt_si, reaction.molecularity, rate_unit)
+            k_us, _ = convert_rate_from_si(k_us_si, reaction.molecularity, rate_unit)
 
             cag_tst_val = cag_kappa(reaction, temperature, variational_coordinate=0.0)
-            cag_cvt_val = cag_kappa(
-                reaction, temperature, variational_coordinate=cvt_coordinate
-            )
+            cag_cvt_val = cag_kappa(reaction, temperature, variational_coordinate=cvt_coordinate)
 
         kappa_wigner_val: float | None = None
         if len(reaction.transition_state.imaginary_frequencies_cm1) == 1:
-            kappa_wigner_val = transition_state_wigner_kappa(
-                reaction.transition_state, temperature
-            )
+            kappa_wigner_val = transition_state_wigner_kappa(reaction.transition_state, temperature)
 
         kappa_zct_val: float | None = None
         if zct_profile is not None:
@@ -221,9 +206,7 @@ def calculate_rates(
         if options.tunneling == "none":
             kappa = 1.0
         elif options.tunneling == "wigner":
-            kappa = transition_state_wigner_kappa(
-                reaction.transition_state, temperature
-            )
+            kappa = transition_state_wigner_kappa(reaction.transition_state, temperature)
         elif options.tunneling == "eckart":
             assert kappa_eckart_val is not None
             kappa = kappa_eckart_val
@@ -244,9 +227,7 @@ def calculate_rates(
             kappa = profile_wkb_kappa(zct_profile, temperature)
 
         k_final_si = base_rate_si * kappa
-        k_final, _ = convert_rate_from_si(
-            k_final_si, reaction.molecularity, rate_unit
-        )
+        k_final, _ = convert_rate_from_si(k_final_si, reaction.molecularity, rate_unit)
 
         kc_si_val: float | None = None
         k_rev_final: float | None = None
@@ -256,14 +237,8 @@ def calculate_rates(
                 k_rev_si = k_final_si / kc_si_val
                 rev_molecularity = len(reaction.products)
                 if rev_molecularity in {1, 2}:
-                    rev_unit = (
-                        rate_unit
-                        if rev_molecularity == reaction.molecularity
-                        else "auto"
-                    )
-                    k_rev_final, _ = convert_rate_from_si(
-                        k_rev_si, rev_molecularity, rev_unit
-                    )
+                    rev_unit = rate_unit if rev_molecularity == reaction.molecularity else "auto"
+                    k_rev_final, _ = convert_rate_from_si(k_rev_si, rev_molecularity, rev_unit)
 
         rows.append(
             RateRow(
@@ -302,4 +277,3 @@ def calculate_rates(
         standard_pressure_pa=reaction.standard_pressure_pa,
         rows=tuple(rows),
     )
-

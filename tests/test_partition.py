@@ -27,13 +27,9 @@ def test_harmonic_partition_single_mode() -> None:
         frequencies_cm1=(1000.0,),
     )
     temperature = 300.0
-    x = PLANCK_J_S * LIGHT_SPEED_M_S * 100.0 * 1000.0 / (
-        BOLTZMANN_J_K * temperature
-    )
+    x = PLANCK_J_S * LIGHT_SPEED_M_S * 100.0 * 1000.0 / (BOLTZMANN_J_K * temperature)
     expected = -math.log1p(-math.exp(-x))
-    assert math.isclose(
-        log_vibrational_partition(species, temperature), expected, rel_tol=1.0e-13
-    )
+    assert math.isclose(log_vibrational_partition(species, temperature), expected, rel_tol=1.0e-13)
 
 
 def test_zero_point_energy() -> None:
@@ -116,7 +112,9 @@ def test_frequency_scale_floor_and_morse_anharmonicity() -> None:
     harm_single = Species(
         name="harm1", mass_amu_override=20.0, rotor_type="atomic", frequencies_cm1=(1000.0,)
     )
-    assert log_vibrational_partition(anharmonic, 800.0) > log_vibrational_partition(harm_single, 800.0)
+    assert log_vibrational_partition(anharmonic, 800.0) > log_vibrational_partition(
+        harm_single, 800.0
+    )
 
 
 def test_hindered_rotor_pitzer_gwinn_correction() -> None:
@@ -150,7 +148,6 @@ def test_hindered_rotor_pitzer_gwinn_correction() -> None:
     )
 
 
-
 def test_hindered_rotor_moment_and_frequency_forms_agree() -> None:
     """An explicit moment consistent with (frequency, barrier) must change nothing."""
 
@@ -162,9 +159,9 @@ def test_hindered_rotor_moment_and_frequency_forms_agree() -> None:
     inertia = moment_amu_a2 * AMU_KG * ANGSTROM_M**2
     barrier_j = barrier_kj_mol * 1000.0 / AVOGADRO_MOL
     # Harmonic torsion frequency of V = (W / 2)(1 - cos(sigma * phi)).
-    frequency_cm1 = (
-        (sigma / (2.0 * math.pi)) * math.sqrt(barrier_j / (2.0 * inertia))
-    ) / (LIGHT_SPEED_M_S * 100.0)
+    frequency_cm1 = ((sigma / (2.0 * math.pi)) * math.sqrt(barrier_j / (2.0 * inertia))) / (
+        LIGHT_SPEED_M_S * 100.0
+    )
     with_moment = HinderedRotor(
         frequency_cm1=frequency_cm1,
         barrier_kj_mol=barrier_kj_mol,
