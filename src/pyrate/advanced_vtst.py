@@ -279,10 +279,13 @@ class IntrinsicCoordinatePoint:
         energy = float(self.potential_energy_kj_mol)
         if not math.isfinite(coordinate) or not math.isfinite(energy):
             raise ValueError("IRC coordinates and energies must be finite")
+        # Convert eagerly instead of testing an arbitrary iterable for truth:
+        # NumPy arrays (a common input from Hessian drivers) do not define a
+        # scalar truth value when they contain more than one frequency.
         frequencies = (
-            _finite_tuple(self.frequencies_cm1, "frequencies_cm1", minimum=0)
-            if self.frequencies_cm1
-            else ()
+            ()
+            if self.frequencies_cm1 is None
+            else _finite_tuple(self.frequencies_cm1, "frequencies_cm1", minimum=0)
         )
         if any(frequency == 0.0 for frequency in frequencies):
             raise ValueError("IRC frequencies cannot be zero")
@@ -322,9 +325,9 @@ def harmonic_vibrational_free_energy_kj_mol(
 
     temperature = _validate_temperature(temperature_k)
     frequencies = (
-        _finite_tuple(frequencies_cm1, "frequencies_cm1", minimum=0)
-        if frequencies_cm1
-        else ()
+        ()
+        if frequencies_cm1 is None
+        else _finite_tuple(frequencies_cm1, "frequencies_cm1", minimum=0)
     )
     total = 0.0
     wavenumber_to_kj_mol = 0.011_962_656_5638
@@ -356,7 +359,11 @@ def intrinsic_coordinate_free_energies(
         if len(frequencies_cm1) != len(coords):
             raise ValueError("frequencies_cm1 must contain one row per coordinate")
         frequency_rows = tuple(
-            _finite_tuple(row, f"frequencies_cm1[{index}]", minimum=0) if row else ()
+            (
+                ()
+                if row is None
+                else _finite_tuple(row, f"frequencies_cm1[{index}]", minimum=0)
+            )
             for index, row in enumerate(frequencies_cm1)
         )
     # Validate temperature once before constructing points.
@@ -580,6 +587,30 @@ def _evaluate_potential(
     return energy, weight
 
 
+def _normalize_coordinate_bounds(
+    bounds: Sequence[float] | None,
+) -> tuple[float, float] | None:
+    """Validate and normalize a VRC coordinate interval.
+
+    Keeping this conversion in one helper makes malformed user supplied
+    sequences fail with a useful ``ValueError`` instead of an incidental
+    ``TypeError``/``IndexError`` while unpacking the interval.
+    """
+
+    if bounds is None:
+        return None
+    try:
+        values = tuple(float(value) for value in bounds)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("coordinate_bounds must contain two numeric values") from exc
+    if len(values) != 2:
+        raise ValueError("coordinate_bounds must be (lower, upper)")
+    lower, upper = values
+    if not math.isfinite(lower) or not math.isfinite(upper) or upper <= lower:
+        raise ValueError("coordinate_bounds must be finite with upper > lower")
+    return lower, upper
+
+
 def sample_vrc_loose_transition_state(
     coordinate_bounds: tuple[float, float],
     potential_fn: PotentialCallback,
@@ -595,11 +626,10 @@ def sample_vrc_loose_transition_state(
     not normalized, so they can change the loose-TS rate as intended.
     """
 
-    if len(coordinate_bounds) != 2:
+    normalized_bounds = _normalize_coordinate_bounds(coordinate_bounds)
+    if normalized_bounds is None:  # defensive; this argument is required
         raise ValueError("coordinate_bounds must be (lower, upper)")
-    lower, upper = (float(value) for value in coordinate_bounds)
-    if not math.isfinite(lower) or not math.isfinite(upper) or upper <= lower:
-        raise ValueError("coordinate_bounds must be finite with upper > lower")
+    lower, upper = normalized_bounds
     if not callable(potential_fn):
         raise TypeError("potential_fn must be callable")
     nodes_weights = _gauss_legendre_nodes(int(quadrature_points))
@@ -672,11 +702,16 @@ class VRCVTSTResult:
     def bottleneck_coordinate(self) -> float:
         """Coordinate of the largest Boltzmann-weighted contribution."""
 
+        beta = 1.0 / (_R_KJ_MOL_K * self.temperature_k)
         return max(
             self.samples,
-            key=lambda sample: sample.quadrature_weight
-            * sample.phase_space_weight
-            * math.exp(-sample.energy_kj_mol / (_R_KJ_MOL_K * self.temperature_k)),
+            # Compare in log space so diagnostics remain usable for very deep
+            # negative barriers where direct exponentiation would overflow.
+            key=lambda sample: (
+                math.log(sample.quadrature_weight)
+                + math.log(sample.phase_space_weight)
+                - beta * sample.energy_kj_mol
+            ),
         ).coordinate
 
 
@@ -703,9 +738,10 @@ class VRCVTSTModel:
     def __post_init__(self) -> None:
         if self.phase_space_fn is not None and not callable(self.phase_space_fn):
             raise TypeError("phase_space_fn must be callable")
+        explicit_bounds = _normalize_coordinate_bounds(self.coordinate_bounds)
         if self.potential_fn is None:
             if self.coordinates is None and self.energies_kj_mol is None:
-                if self.energy_kj_mol is None or self.coordinate_bounds is None:
+                if self.energy_kj_mol is None or explicit_bounds is None:
                     raise ValueError(
                         "VRCVTSTModel requires potential_fn, a tabulated profile, "
                         "or energy_kj_mol with coordinate_bounds"
@@ -713,7 +749,7 @@ class VRCVTSTModel:
                 energy = float(self.energy_kj_mol)
                 if not math.isfinite(energy):
                     raise ValueError("energy_kj_mol must be finite")
-                bounds = self.coordinate_bounds
+                bounds = explicit_bounds
                 object.__setattr__(self, "energy_kj_mol", energy)
                 object.__setattr__(self, "coordinate_bounds", bounds)
             elif self.coordinates is None or self.energies_kj_mol is None:
@@ -740,8 +776,8 @@ class VRCVTSTModel:
                 object.__setattr__(self, "phase_space_weights", weights)
                 bounds = (
                     (coords[0], coords[-1])
-                    if self.coordinate_bounds is None
-                    else self.coordinate_bounds
+                    if explicit_bounds is None
+                    else explicit_bounds
                 )
                 if bounds[0] < coords[0] or bounds[1] > coords[-1]:
                     raise ValueError(
@@ -750,17 +786,16 @@ class VRCVTSTModel:
         else:
             if not callable(self.potential_fn):
                 raise TypeError("potential_fn must be callable")
-            if self.coordinate_bounds is None:
+            if explicit_bounds is None:
                 raise ValueError("coordinate_bounds is required with potential_fn")
-            bounds = self.coordinate_bounds
+            bounds = explicit_bounds
         if bounds is None:
             raise ValueError("coordinate_bounds is required")
-        if len(bounds) != 2:
-            raise ValueError("coordinate_bounds must be (lower, upper)")
-        lower, upper = (float(value) for value in bounds)
-        if not math.isfinite(lower) or not math.isfinite(upper) or upper <= lower:
-            raise ValueError("coordinate_bounds must be finite with upper > lower")
-        object.__setattr__(self, "coordinate_bounds", (lower, upper))
+        # ``bounds`` is either the validated explicit interval or the exact
+        # endpoints of a validated tabulated profile.
+        normalized_bounds = _normalize_coordinate_bounds(bounds)
+        assert normalized_bounds is not None
+        object.__setattr__(self, "coordinate_bounds", normalized_bounds)
         if int(self.quadrature_points) < 2 or int(self.quadrature_points) > 256:
             raise ValueError("quadrature_points must be between 2 and 256")
         object.__setattr__(self, "quadrature_points", int(self.quadrature_points))
