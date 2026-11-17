@@ -168,12 +168,21 @@ def parse_toml_data(
             _mapping(profile_data, "tunneling.profile")
         )
 
+    def optional_table(name: str) -> dict[str, Any] | None:
+        raw = data.get(name, calculation.get(name))
+        return dict(_mapping(raw, name)) if raw is not None else None
+
     options = CalculationOptions(
         temperatures_k=tuple(float(value) for value in temperatures),
         method=str(calculation.get("method", "tst")),
         tunneling=tunneling_method,
         output_rate_unit=str(calculation.get("rate_unit", "auto")),
         tunneling_profile=tunneling_profile,
+        dual_level=optional_table("dual_level"),
+        vrc_vtst=optional_table("vrc_vtst"),
+        solvent=optional_table("solvent"),
+        surface=optional_table("surface"),
+        pressure=optional_table("pressure"),
     )
     return LoadedCalculation(
         name=name, reaction=reaction, options=options, raw=data, source=source
