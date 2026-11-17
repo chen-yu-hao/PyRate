@@ -1,0 +1,61 @@
+[calculation]
+name = "Cl + HBr -> HCl + Br (Extended LEPS, Page-McIver MEP, Curvilinear CVT/SCT)"
+temperatures_k = [200.0, 298.15, 300.0, 500.0, 1000.0]
+method = "cvt"
+tunneling = "sct"
+rate_unit = "cm^3 molecule^-1 s^-1"
+mass_convention = "polyrate"
+
+[potential]
+type = "cl_hbr_leps"
+zero_at_reactants = true
+
+[[reactants]]
+name = "Cl"
+atoms = [{ symbol = "Cl", xyz = [0.0, 0.0, 0.0] }]
+electronic_states = [{ degeneracy = 2, energy_kj_mol = 0.0 }]
+
+[[reactants]]
+name = "HBr"
+symmetry_number = 1
+optimize = true
+atoms = [
+  { symbol = "H", xyz = [0.0, 0.0, 0.0] },
+  { symbol = "Br", xyz = [0.0, 0.0, 1.414] },
+]
+
+[transition_state]
+name = "Cl--H--Br"
+rotor_type = "linear"
+symmetry_number = 1
+optimize = true
+electronic_states = [{ degeneracy = 2, energy_kj_mol = 0.0 }]
+atoms = [
+  { symbol = "Cl", xyz = [0.0, 0.0, -1.8] },
+  { symbol = "H", xyz = [0.0, 0.0, 0.0] },
+  { symbol = "Br", xyz = [0.0, 0.0, 1.5] },
+]
+
+[[products]]
+name = "HCl"
+symmetry_number = 1
+optimize = true
+atoms = [
+  { symbol = "Cl", xyz = [0.0, 0.0, 0.0] },
+  { symbol = "H", xyz = [0.0, 0.0, 1.275] },
+]
+
+[[products]]
+name = "Br"
+atoms = [{ symbol = "Br", xyz = [0.0, 0.0, 0.0] }]
+electronic_states = [{ degeneracy = 2, energy_kj_mol = 0.0 }]
+
+[mep]
+method = "pm"
+coordinate_system = "curvilinear"
+curvature_method = "rphb"
+step_size_bohr = 0.03
+hessian_stride = 1
+s_min_bohr = -1.2
+s_max_bohr = 1.2
+scale_mass_amu = 1.0

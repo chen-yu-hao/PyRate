@@ -7,13 +7,26 @@ import csv
 import io
 import json
 import sys
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # pragma: no cover
+    import tomli as tomllib  # type: ignore[import-not-found]
+
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from .calculation import CalculationResult, calculate_rates
-from .input import LoadedCalculation, legacy_to_calculation, load_input, load_toml
-from .legacy import LegacyInput
+from .direct_dynamics import DirectDynamicsError, ExternalCommandPes
+from .input import (
+    legacy_to_calculation,
+    load_input,
+    parse_toml_data,
+)
+from .legacy import LegacyInput, LegacySemanticError, validate_legacy_semantics
 from .native import backend_info
+from .pes import PotentialEnergySurface, get_builtin_pes
 
 
 def _format_optional(value: float | int | None, specifier: str = ".6g") -> str:
@@ -48,8 +61,8 @@ def format_table(result: CalculationResult) -> str:
             ]
         )
     widths = [len(header) for header in headers]
-    for row in rows:
-        for index, value in enumerate(row):
+    for cells in rows:
+        for index, value in enumerate(cells):
             widths[index] = max(widths[index], len(value))
     lines = [
         f"{result.name}",
@@ -58,8 +71,8 @@ def format_table(result: CalculationResult) -> str:
         "  ".join("-" * width for width in widths),
     ]
     lines.extend(
-        "  ".join(value.rjust(widths[index]) for index, value in enumerate(row))
-        for row in rows
+        "  ".join(value.rjust(widths[index]) for index, value in enumerate(cells))
+        for cells in rows
     )
     return "\n".join(lines) + "\n"
 
@@ -81,10 +94,52 @@ def _write_output(text: str, output: str | None) -> None:
     Path(output).write_text(text, encoding="utf-8")
 
 
+def _resolve_cli_pes(
+    pes_spec: str | None, restart_path: str | None
+) -> PotentialEnergySurface | None:
+    if pes_spec is None:
+        return None
+    lower = pes_spec.strip().lower()
+    if lower.startswith("command:") or lower.startswith("external:"):
+        cmd = pes_spec.split(":", 1)[1].strip()
+        return ExternalCommandPes(command=cmd, restart_file=restart_path)
+    return get_builtin_pes(pes_spec)
+
+
 def _run_command(args: argparse.Namespace) -> int:
-    loaded = load_input(args.input)
+    pes = _resolve_cli_pes(getattr(args, "pes", None), getattr(args, "restart", None))
+    input_path = Path(args.input)
+    restart_path = getattr(args, "restart", None)
+
+    if (
+        input_path.suffix.lower() == ".toml"
+        and pes is None
+        and restart_path is not None
+    ):
+        with input_path.open("rb") as handle:
+            raw_data = dict(tomllib.load(handle))
+        pot_tbl = raw_data.get("potential")
+        if isinstance(pot_tbl, Mapping):
+            pot_copy = dict(pot_tbl)
+            pot_type = str(pot_copy.get("type", "")).strip().lower()
+            if pot_type in {"command", "external", "gaussian", "gamess"}:
+                pot_copy["restart_file"] = str(restart_path)
+                raw_data["potential"] = pot_copy
+        loaded: Any = parse_toml_data(raw_data, source=str(input_path))
+    else:
+        loaded = load_input(input_path, pes=pes)
+
     if isinstance(loaded, LegacyInput):
-        loaded = legacy_to_calculation(loaded, fu40_path=getattr(args, "fu40", None))
+        loaded = legacy_to_calculation(
+            loaded,
+            fu40_path=getattr(args, "fu40", None),
+            pes=pes,
+        )
+
+    export_fu40 = getattr(args, "export_fu40", None)
+    if export_fu40 is not None:
+        loaded.save_fu40(export_fu40)
+
     if args.rate_unit is not None:
         from dataclasses import replace
 
@@ -128,9 +183,13 @@ def _inspect_command(args: argparse.Namespace) -> int:
 def _validate_command(args: argparse.Namespace) -> int:
     loaded = load_input(args.input)
     if isinstance(loaded, LegacyInput):
+        if getattr(args, "strict", False):
+            validate_legacy_semantics(loaded)
         warnings = loaded.compatibility_warnings()
         sys.stdout.write("syntax: valid Polyrate-style input\n")
-        if warnings:
+        if getattr(args, "strict", False):
+            sys.stdout.write("compatibility: strict validation passed\n")
+        elif warnings:
             for warning in warnings:
                 sys.stdout.write(f"warning: {warning}\n")
         else:
@@ -156,10 +215,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_parser = subparsers.add_parser("run", help="run a PyRate TOML or Polyrate .dat+.fu40 calculation")
+    run_parser = subparsers.add_parser(
+        "run", help="run a PyRate TOML or Polyrate .dat+.fu40 calculation"
+    )
     run_parser.add_argument("input", help="input TOML or Polyrate .dat file")
     run_parser.add_argument(
         "--fu40", help="companion Polyrate unit-40 (.fu40) electronic-structure file"
+    )
+    run_parser.add_argument(
+        "--pes",
+        help=(
+            "analytical PES name (e.g. cl_hbr_leps, h3_leps) or external driver "
+            "(command:<cmd>)"
+        ),
+    )
+    run_parser.add_argument(
+        "--export-fu40",
+        help="write an integrated MEP and stationary points to a Polyrate .fu40 file",
+    )
+    run_parser.add_argument(
+        "--restart",
+        help="path to JSON restart cache for direct-dynamics PES evaluations",
     )
     run_parser.add_argument(
         "--format", choices=("table", "json", "csv"), default="table"
@@ -185,6 +261,11 @@ def build_parser() -> argparse.ArgumentParser:
         "validate", help="validate a TOML or legacy Polyrate input"
     )
     validate_parser.add_argument("input")
+    validate_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="fail with exit code 2 on unsupported legacy Polyrate sections or keywords",
+    )
     validate_parser.set_defaults(handler=_validate_command)
 
     native_parser = subparsers.add_parser(
@@ -199,7 +280,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.handler(args))
-    except (OSError, ValueError, KeyError, NotImplementedError) as exc:
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        NotImplementedError,
+        LegacySemanticError,
+        DirectDynamicsError,
+    ) as exc:
         parser.exit(2, f"pyrate: error: {exc}\n")
 
 

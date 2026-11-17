@@ -263,3 +263,314 @@ def test_polyrate_2023_ch5fu40tr4_end_to_end_head_to_head():
     assert report.passed == 12
     assert report.failed == 0
 
+
+def test_cl_hbr_leps_curvilinear_mep_fu40_roundtrip_and_fu15_check(tmp_path) -> None:
+    import math
+
+    from pyrate.calculation import calculate_rates
+    from pyrate.input import legacy_to_calculation
+    from pyrate.legacy import parse_legacy_text
+    from pyrate.pes import (
+        SupermoleculeFragmentPes,
+        build_species_from_pes,
+        cl_hbr_leps_surface,
+        optimize_saddle,
+    )
+
+    pes = cl_hbr_leps_surface()
+    ts_guess = [[0.0, 0.0, -1.8], [0.0, 0.0, 0.0], [0.0, 0.0, 1.5]]
+    ts_opt = optimize_saddle(pes, ("Cl", "H", "Br"), ts_guess, mass_convention="polyrate")
+    assert ts_opt.converged
+    assert math.isclose(ts_opt.evaluation.energy_kj_mol / 4.184, 10.9993, abs_tol=1.0e-3)
+
+    ts_freqs = sorted(float(f) for f in ts_opt.normal_mode_result.frequencies_cm1)
+    assert math.isclose(ts_freqs[0], -1563.29, abs_tol=0.3)
+    assert math.isclose(ts_freqs[1], 305.89, abs_tol=0.3)
+    assert math.isclose(ts_freqs[2], 452.31, abs_tol=0.3)
+    assert math.isclose(ts_freqs[3], 452.31, abs_tol=0.3)
+
+    hbr_pes = SupermoleculeFragmentPes(pes, ("Cl", "H", "Br"), (1, 2), ts_opt.coords_angstrom)
+    sp_hbr, _ = build_species_from_pes(
+        hbr_pes,
+        "HBr",
+        ("H", "Br"),
+        [[0.0, 0.0, 0.0], [0.0, 0.0, 1.414]],
+        mass_convention="polyrate",
+        optimize=True,
+    )
+    assert math.isclose(sp_hbr.positive_frequencies_cm1[0], 2706.94, abs_tol=0.5)
+
+    hcl_pes = SupermoleculeFragmentPes(pes, ("Cl", "H", "Br"), (0, 1), ts_opt.coords_angstrom)
+    sp_hcl, _ = build_species_from_pes(
+        hcl_pes,
+        "HCl",
+        ("Cl", "H"),
+        [[0.0, 0.0, 0.0], [0.0, 0.0, 1.275]],
+        mass_convention="polyrate",
+        optimize=True,
+    )
+    assert math.isclose(sp_hcl.electronic_energy_kj_mol / 4.184, -16.160, abs_tol=1.0e-2)
+    assert math.isclose(sp_hcl.positive_frequencies_cm1[0], 2988.15, abs_tol=0.5)
+
+    r2_a = sp_hbr.atoms
+    p1_a = sp_hcl.atoms
+    ts_c = ts_opt.coords_angstrom
+    ts_lines = "\n".join(
+        f"    {i + 1} {ts_c[i, 0]:.10f} {ts_c[i, 1]:.10f} {ts_c[i, 2]:.10f}"
+        for i in range(3)
+    )
+
+    def _make_dat(pot: str, coord: str, tunnel: str) -> str:
+        return f"""
+*GENERAL
+  ATOMS
+    1 Cl
+    2 H
+    3 Br
+  END
+  INPUNIT ANG
+*ENERGETICS
+  POTENTIAL {pot}
+*SECOND
+  {coord}
+  CENTRAL
+*REACT1
+  GEOM
+    1 0.0 0.0 0.0
+  END
+  ELEC
+    2 0.0
+  END
+  SPECIES ATOMIC
+*REACT2
+  GEOM
+    2 {r2_a[0].x_angstrom:.10f} {r2_a[0].y_angstrom:.10f} {r2_a[0].z_angstrom:.10f}
+    3 {r2_a[1].x_angstrom:.10f} {r2_a[1].y_angstrom:.10f} {r2_a[1].z_angstrom:.10f}
+  END
+  SPECIES LINRP
+*PROD1
+  GEOM
+    1 {p1_a[0].x_angstrom:.10f} {p1_a[0].y_angstrom:.10f} {p1_a[0].z_angstrom:.10f}
+    2 {p1_a[1].x_angstrom:.10f} {p1_a[1].y_angstrom:.10f} {p1_a[1].z_angstrom:.10f}
+  END
+  SPECIES LINRP
+*PROD2
+  GEOM
+    3 0.0 0.0 0.0
+  END
+  ELEC
+    2 0.0
+  END
+  SPECIES ATOMIC
+*START
+  GEOM
+{ts_lines}
+  END
+  ELEC
+    2 0.0
+  END
+  SPECIES LINTS
+*PATH
+  PM
+  {coord}
+  SSTEP 0.04
+  SRANGE
+    -1.0 1.0
+  END
+*TUNNEL
+  {tunnel}
+*RATE
+  CVT
+  TEMP
+    200.0 298.15 300.0 500.0 1000.0
+  END
+"""
+
+    loaded_curv_sct = legacy_to_calculation(
+        parse_legacy_text(_make_dat("BUILTIN:cl_hbr_leps", "CURV", "SCT"))
+    )
+    loaded_curv_zct = legacy_to_calculation(
+        parse_legacy_text(_make_dat("BUILTIN:cl_hbr_leps", "CURV", "ZCT"))
+    )
+    loaded_rect_sct = legacy_to_calculation(
+        parse_legacy_text(_make_dat("BUILTIN:cl_hbr_leps", "RECT", "SCT"))
+    )
+
+    assert loaded_curv_sct.reaction.path is not None
+    assert loaded_rect_sct.reaction.path is not None
+    neg_curv = sum(
+        1
+        for pt in loaded_curv_sct.reaction.path.points
+        for f in pt.dividing_surface.frequencies_cm1
+        if f < 0.0
+    )
+    neg_rect = sum(
+        1
+        for pt in loaded_rect_sct.reaction.path.points
+        for f in pt.dividing_surface.frequencies_cm1
+        if f < 0.0
+    )
+    assert neg_curv == 0
+    assert neg_rect > 0
+
+    res_sct = calculate_rates(loaded_curv_sct.reaction, loaded_curv_sct.options)
+    res_zct = calculate_rates(loaded_curv_zct.reaction, loaded_curv_zct.options)
+    for row_sct, row_zct in zip(res_sct.rows, res_zct.rows, strict=True):
+        assert row_sct.cvt_coordinate is not None and row_sct.cvt_coordinate < -0.1
+        assert row_sct.k_cvt is not None and row_sct.k_cvt < row_sct.k_tst
+        assert row_sct.tunneling_correction > row_zct.tunneling_correction > 1.0
+
+    # Roundtrip to .fu40 (both hessian and read modes) and verify rate parity within 1e-6
+    for mode in ("hessian", "read"):
+        fu40_file = tmp_path / f"cl_hbr_{mode}.fu40"
+        loaded_curv_sct.save_fu40(fu40_file, freqsource=mode, hessform="packed")
+        reloaded = legacy_to_calculation(
+            parse_legacy_text(_make_dat("UNIT40", "CURV", "SCT")),
+            fu40_path=fu40_file,
+        )
+        res_re = calculate_rates(reloaded.reaction, reloaded.options)
+        for ra, rb in zip(res_sct.rows, res_re.rows, strict=True):
+            assert math.isclose(ra.k_tst, rb.k_tst, rel_tol=1.0e-6)
+            assert math.isclose(ra.k_cvt or 0.0, rb.k_cvt or 0.0, rel_tol=1.0e-6)
+            assert math.isclose(ra.k_final, rb.k_final, rel_tol=1.0e-6)
+
+    # Verify 3-sig-fig Polyrate .fu15 formatting + unit/column comparator passes all 15 points
+    fu15_lines = [
+        " Summary of forward rate constants (cm**3/molecule-1 s-1) :",
+        "     T(K)      TST       CVT     CVT/SCT",
+    ]
+    for row in res_sct.rows:
+        assert row.k_cvt is not None
+        fu15_lines.append(
+            f"  {row.temperature_k:7.2f}  {row.k_tst:.2E}  {row.k_cvt:.2E}  {row.k_final:.2E}"
+        )
+    fu15_table = parse_fu15_tables("\n".join(fu15_lines))[0]
+    fu15_report = compare_fu15_to_pyrate(
+        fu15_table,
+        res_sct.as_dict(),
+        column_map={"TST": "k_tst", "CVT": "k_cvt", "CVT/SCT": "k_final"},
+        relative_tolerance=5.0e-3,
+        strict=True,
+    )
+    assert fu15_report.success
+    assert fu15_report.passed == 15
+    assert fu15_report.failed == 0
+
+
+def test_h3_and_dh2_leps_kie_and_native_fallback_parity(monkeypatch) -> None:
+    import math
+
+    import pyrate.native as native_mod
+    from pyrate.calculation import calculate_rates
+    from pyrate.input import parse_toml_data
+    from pyrate.pes import (
+        SupermoleculeFragmentPes,
+        build_species_from_pes,
+        h3_leps_surface,
+        optimize_saddle,
+    )
+
+    pes = h3_leps_surface()
+    ts_guess = [[0.0, 0.0, -0.95], [0.0, 0.0, 0.0], [0.0, 0.0, 0.95]]
+    ts_opt = optimize_saddle(pes, ("H", "H", "H"), ts_guess, mass_convention="polyrate")
+    assert ts_opt.converged
+
+    h2_pes = SupermoleculeFragmentPes(pes, ("H", "H", "H"), (1, 2), ts_opt.coords_angstrom)
+    sp_h2, _ = build_species_from_pes(
+        h2_pes,
+        "H2",
+        ("H", "H"),
+        [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]],
+        mass_convention="polyrate",
+        optimize=True,
+    )
+    r_bc = sp_h2.atoms[1].z_angstrom - sp_h2.atoms[0].z_angstrom
+
+    def _run_isotopologue(syms: tuple[str, str, str], r_sym: int, sct_tunnel: str = "sct"):
+        ts_xyz = ts_opt.coords_angstrom
+        # Polyrate SIGMAF convention: H2 reactant carries symmetry_number=2 and TS uses 1
+        # (matching PathPoint symmetry_number=1 along the MEP).
+        toml_doc = {
+            "calculation": {
+                "name": "-".join(syms),
+                "temperatures_k": [200.0, 300.0, 600.0],
+                "method": "cvt",
+                "tunneling": sct_tunnel,
+                "rate_unit": "cm^3 molecule^-1 s^-1",
+                "mass_convention": "polyrate",
+            },
+            "reactants": [
+                {
+                    "name": f"{syms[0]}_atom",
+                    "atoms": [{"symbol": syms[0], "xyz": [0.0, 0.0, 0.0]}],
+                    "electronic_states": [{"degeneracy": 2, "energy_kj_mol": 0.0}],
+                },
+                {
+                    "name": f"{syms[1]}{syms[2]}",
+                    "rotor_type": "linear",
+                    "symmetry_number": r_sym,
+                    "atoms": [
+                        {"symbol": syms[1], "xyz": [0.0, 0.0, 0.0]},
+                        {"symbol": syms[2], "xyz": [0.0, 0.0, float(r_bc)]},
+                    ],
+                },
+            ],
+            "transition_state": {
+                "name": "TS",
+                "rotor_type": "linear",
+                "symmetry_number": 1,
+                "electronic_states": [{"degeneracy": 2, "energy_kj_mol": 0.0}],
+                "atoms": [
+                    {"symbol": syms[0], "xyz": ts_xyz[0].tolist()},
+                    {"symbol": syms[1], "xyz": ts_xyz[1].tolist()},
+                    {"symbol": syms[2], "xyz": ts_xyz[2].tolist()},
+                ],
+            },
+            "mep": {
+                "method": "pm",
+                "step_size_bohr": 0.04,
+                "s_min_bohr": -0.8,
+                "s_max_bohr": 0.8,
+                "coordinate_system": "curvilinear",
+            },
+        }
+        loaded = parse_toml_data(toml_doc, pes=pes)
+        return loaded, calculate_rates(loaded.reaction, loaded.options, name=loaded.name)
+
+    loaded_hhh_sct, res_hhh_sct = _run_isotopologue(("H", "H", "H"), 2, "sct")
+    _, res_hhh_zct = _run_isotopologue(("H", "H", "H"), 2, "zct")
+    loaded_dhh, res_dhh = _run_isotopologue(("D", "H", "H"), 2, "sct")
+    loaded_2hhh, res_2hhh = _run_isotopologue(("2H", "H", "H"), 2, "sct")
+    _, res_hdd = _run_isotopologue(("H", "D", "D"), 2, "sct")
+
+    for rs, rz in zip(res_hhh_sct.rows, res_hhh_zct.rows, strict=True):
+        assert rs.cvt_coordinate is not None and abs(rs.cvt_coordinate) < 1.0e-4
+        assert rs.k_cvt is not None and math.isclose(rs.k_cvt, rs.k_tst, rel_tol=1.0e-4)
+        assert rs.tunneling_correction > rz.tunneling_correction > 1.0
+
+    # Isotope aliases "2H" and "D" produce identical TS modes and rate constants
+    assert (
+        loaded_2hhh.reaction.transition_state.frequencies_cm1
+        == loaded_dhh.reaction.transition_state.frequencies_cm1
+    )
+    for r2h, rd in zip(res_2hhh.rows, res_dhh.rows, strict=True):
+        assert math.isclose(r2h.k_final, rd.k_final, rel_tol=1.0e-12)
+
+    # Heavy substitution lowers TS frequencies / tunneling; primary H+H2 / H+D2 KIE > 10 at 300 K
+    assert abs(loaded_dhh.reaction.transition_state.imaginary_frequencies_cm1[0]) < abs(
+        loaded_hhh_sct.reaction.transition_state.imaginary_frequencies_cm1[0]
+    )
+    assert res_dhh.rows[1].tunneling_correction < res_hhh_sct.rows[1].tunneling_correction
+    assert res_hhh_sct.rows[1].k_final / res_hdd.rows[1].k_final > 10.0
+
+    # End-to-end native C++ vs pure Python fallback parity
+    if native_mod.HAS_NATIVE:
+        monkeypatch.setattr(native_mod, "HAS_NATIVE", False)
+        _, res_hhh_py = _run_isotopologue(("H", "H", "H"), 2, "sct")
+        for rn, rp in zip(res_hhh_sct.rows, res_hhh_py.rows, strict=True):
+            assert math.isclose(rn.k_tst, rp.k_tst, rel_tol=1.0e-8)
+            assert math.isclose(rn.k_cvt or 0.0, rp.k_cvt or 0.0, rel_tol=1.0e-8)
+            assert math.isclose(rn.tunneling_correction, rp.tunneling_correction, rel_tol=1.0e-8)
+            assert math.isclose(rn.k_final, rp.k_final, rel_tol=1.0e-8)
+
+

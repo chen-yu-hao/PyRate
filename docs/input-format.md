@@ -120,7 +120,63 @@ effective_masses_amu = [1.0, 0.85, 0.72, 0.85, 1.0]  # 可选
 energy_grid_points = 400
 ```
 
-## 6. Polyrate `.dat` + `.fu40` 输入
+## 6. 在线势能面与直接动力学（`[potential]`）
 
-`load_input("case.dat", fu40_path="case.fu40")` 或 `pyrate run case.dat --fu40 case.fu40` 可直接读取 Polyrate 2023 格式的 `.dat` 控制文件与 `.fu40` 电子结构路径文件（支持 `*point40` 下的 `freqsource read` 显式频率/曲率，以及 `freqsource hessian` 紧缩下三角或全矩阵笛卡尔力常数自动 `PROJCT` 投影与 `RPHB` 曲率计算）。
+可通过 `[potential]` 指定内置解析势能面或外部量子化学子进程；开启后只需给出各物种（及过渡态）的 `atoms`，无需预先手工填写 `electronic_energy_kj_mol` 与 `frequencies_cm1`：
+
+```toml
+[potential]
+type = "cl_hbr_leps"         # 内置：cl_hbr_leps | h3_leps | extended_leps | muller_brown | eckart_valley
+zero_at_reactants = true
+```
+
+自定义三体扩展 LEPS 参数使用 `type = "extended_leps"`（需提供长度为 3 的 `de_kcal_mol`、`re_angstrom`、`beta_angstrom_inv`、`sato` 及可选 `atom_symbols`）。
+
+外部电子结构接口与持久化重启缓存（支持 `command`、`gaussian`、`gamess`）：
+
+```toml
+[potential]
+type = "command"             # command | gaussian | gamess
+command = "python3 my_qm_driver.py {input} {output}"
+restart_file = "cache/restart.json"   # 相对当前 .toml 文件解析
+rst_tol_bohr = 1e-8
+supermolecule = true                  # 多体专用势能面需要原子碎片按 200 Å 隔离求值时设为 true
+```
+
+- `type = "gaussian"` 可配置 `command`（默认 `["g16"]`）、`method`、`basis`、`mem`、`nprocshared`、`extra_keywords`、`extra_sections`、`fchk_command`；
+- `type = "gamess"` 可配置 `command`（默认 `["rungms"]`）、`scftyp`、`contrl`、`basis`、`extra_groups`；
+- 物种表与过渡态支持 `optimize = true`（自动极小值 BFGS / 鞍点 PRFO 优化，默认收敛阈值 `gtol_au = 1e-6`）；
+- **注意**：与 `[potential]` 配合声明自旋多重度或电子态简并度时，请使用物种表中的 `electronic_states = [{degeneracy = 2, energy_kj_mol = 0.0}]`（TOML 解析器不读取 `electronic_degeneracy` 键）。
+
+## 7. 反应路径在线积分（`[mep]` 与 `[path.integration]`）
+
+与 `[potential]`（或 CLI `--pes`）结合时，可用 `[mep]` 或 `[path.integration]`（二选一互斥，不可同时提供）自动从过渡态或初始非驻点积分散布反应路径；完整端到端配置见 [`examples/cl_hbr_mep.toml`](../examples/cl_hbr_mep.toml)：
+
+```toml
+[mep]                        # 或写为 [path.integration]
+method = "pm"                # pm (同 rpm/lqa) | es1 | euler (同 esd)
+coordinate_system = "curvilinear"  # curvilinear | rectilinear
+curvature_method = "rphb"    # rphb | none
+step_size_bohr = 0.03
+hessian_stride = 1           # 每隔多少积分步求值一次 Hessian（INH）
+save_stride = 1
+s_min_bohr = -1.2
+s_max_bohr = 1.2
+scale_mass_amu = 1.0
+start_from_saddle = true
+direction_sign = 1           # 1 | -1（或提供 direction_vector_angstrom）
+mode_tracking = true
+optimize_stationary_points = false
+```
+
+## 8. Polyrate `.dat` + `.fu40` 输入与命令行参数
+
+`load_input("case.dat")`、`load_input("case.dat", fu40_path="case.fu40")` 或命令行可直接读取与执行 Polyrate 2023 格式 `.dat`：
+
+- `.fu40` 模式：配合 `--fu40 case.fu40` 支持 `*point40` 下 `freqsource read` 与 `freqsource hessian`（紧缩/全矩阵 `PROJCT` + `CURV`/`RECT` 投影 + `RPHB` 曲率）；当 `.fu40` 的 `*R140`/`*R240`/`*P140`/`*P240`/`*SADDLE40` 包含 `GEOM` 块时优先使用其平衡构型；
+- 在线势能面模式：支持 `*ENERGETICS POTENTIAL BUILTIN:<name>`（如 `POTENTIAL BUILTIN:cl_hbr_leps`、`BUILTIN:h3_leps`）或通过 CLI `--pes <name|command:<cmd>>` 注入势能面；支持 `*OPTIMIZATION`（`OPTMIN`、`OPTTS`、`BFGS`、`PRFO`、`GTOL`）、`*PATH`（`PM`/`RPM`/`LQA`/`ES1`/`ESD`/`EULER`、`SSTEP`、`SRANGE`/`SMIN`/`SMAX`、`INH`、`SCALEMASS`、`NOSADDLE`、`SIGN`、`CURV`/`RECT`）、`*GENERAL MASS` 逐原子质量覆盖、`FREQSCALE` 及 `.fu40` 导出；
+- 常用新增 CLI 参数：
+  - `pyrate run input.dat --pes cl_hbr_leps --export-fu40 out.fu40`：在线求解并导出 `.fu40` 供后续 `--fu40` 复算；
+  - `pyrate run input.toml --pes "command:python3 driver.py" --restart cache.json`：注入外部驱动及持久化重启缓存；
+  - `pyrate validate input.dat --strict`：启用严格语义校验（对应 `validate_legacy_semantics`），遇到不支持的区段/关键字（如 `LCG4`、`ISPE`、`ICVT`、`VRCTST`、`SOLV`、`RODS`）或非法单位/参数时以退出码 `2` 报告精确的 `*SECTION KEYWORD line N` 错误。
 

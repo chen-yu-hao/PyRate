@@ -141,3 +141,129 @@ def test_eckart_matches_parabolic_and_wigner_limits() -> None:
         40.0e3 / AVOGADRO_MOL, 60.0e3 / AVOGADRO_MOL, 1500.0, 300.0, 2000
     )
     assert math.isclose(asym, 14.521, rel_tol=2.0e-3)
+
+
+def test_project_symmetric_matrix_annihilates_basis_and_matches_fallback(monkeypatch) -> None:
+    import pyrate.native as native_mod
+
+    rng = np.random.default_rng(42)
+    raw = rng.normal(size=(9, 9))
+    mat = 0.5 * (raw + raw.T)
+    q, _ = np.linalg.qr(rng.normal(size=(9, 4)))
+
+    projected = native_mod.project_symmetric_matrix(mat, q)
+    expected = np.eye(9) - q @ q.T
+    expected = expected @ mat @ expected
+    expected = 0.5 * (expected + expected.T)
+
+    assert np.allclose(projected, projected.T, atol=1.0e-14)
+    assert np.allclose(projected @ q, 0.0, atol=1.0e-13)
+    assert np.allclose(projected, expected, atol=1.0e-13)
+
+    # Empty basis just symmetrizes input matrix
+    sym_only = native_mod.project_symmetric_matrix(raw, np.zeros((9, 0)))
+    assert np.allclose(sym_only, 0.5 * (raw + raw.T), atol=1.0e-14)
+
+    if native_mod.HAS_NATIVE:
+        monkeypatch.setattr(native_mod, "HAS_NATIVE", False)
+        py_projected = native_mod.project_symmetric_matrix(mat, q)
+        assert np.allclose(projected, py_projected, atol=1.0e-13)
+
+
+def test_page_mciver_lqa_step_matches_fine_ode_and_taylor_limit(monkeypatch) -> None:
+    import pyrate.native as native_mod
+
+    rng = np.random.default_rng(7)
+    raw = rng.normal(size=(6, 6))
+    hess = 0.5 * (raw + raw.T)
+    evals, evecs = np.linalg.eigh(hess)
+    # Include positive, negative (saddle), and exact-zero eigenvalues
+    evals[0] = -1.2
+    evals[2] = 0.0
+    evals[4] = 1.0e-8
+    grad = np.array([0.08, -0.05, 0.03, 0.02, -0.04, 0.06], dtype=float)
+    step_s = 0.02
+
+    dx, end_tan, u_star = native_mod.page_mciver_lqa_step(grad, evals, evecs, step_s)
+    assert u_star > 0.0
+    assert math.isclose(float(np.linalg.norm(end_tan)), 1.0, rel_tol=1.0e-12)
+
+    # Fine reference Euler integration of dx/du = -(g + H_eff x) on [0, u_star]
+    h_eff = evecs @ np.diag(evals) @ evecs.T
+    n_sub = 4000
+    du = u_star / n_sub
+    x_ref = np.zeros(6, dtype=float)
+    s_ref = 0.0
+    for _ in range(n_sub):
+        v_mid = -(grad + h_eff @ x_ref)
+        x_mid = x_ref + 0.5 * du * v_mid
+        v_step = -(grad + h_eff @ x_mid)
+        s_ref += float(np.linalg.norm(v_step)) * du
+        x_ref = x_ref + du * v_step
+
+    assert math.isclose(s_ref, step_s, rel_tol=1.0e-5)
+    assert np.allclose(dx, x_ref, atol=1.0e-6)
+    g_end = grad + h_eff @ dx
+    expected_tan = -g_end / float(np.linalg.norm(g_end))
+    assert np.allclose(end_tan, expected_tan, atol=1.0e-5)
+
+    # Zero Hessian limit -> straight steepest descent
+    dx_zero, tan_zero, u_zero = native_mod.page_mciver_lqa_step(
+        grad, np.zeros(6), np.eye(6), step_s
+    )
+    g_unit = -grad / float(np.linalg.norm(grad))
+    assert np.allclose(dx_zero, step_s * g_unit, atol=1.0e-13)
+    assert np.allclose(tan_zero, g_unit, atol=1.0e-13)
+    assert math.isclose(u_zero, step_s / float(np.linalg.norm(grad)), rel_tol=1.0e-10)
+
+    # Zero gradient returns zero step cleanly
+    z_dx, z_tan, z_u = native_mod.page_mciver_lqa_step(np.zeros(4), np.ones(4), np.eye(4), step_s)
+    assert np.allclose(z_dx, 0.0) and np.allclose(z_tan, 0.0) and z_u == 0.0
+
+    if native_mod.HAS_NATIVE:
+        monkeypatch.setattr(native_mod, "HAS_NATIVE", False)
+        py_dx, py_tan, py_u = native_mod.page_mciver_lqa_step(grad, evals, evecs, step_s)
+        assert np.allclose(dx, py_dx, atol=1.0e-12)
+        assert np.allclose(end_tan, py_tan, atol=1.0e-12)
+        assert math.isclose(u_star, py_u, rel_tol=1.0e-12)
+
+
+def test_leps_kernel_gradient_matches_finite_difference_and_fallback(monkeypatch) -> None:
+    import pyrate.native as native_mod
+
+    bohr_ang = 0.529177106
+    k2h = 1.0 / 627.5095
+    de = (106.4 * k2h, 90.24 * k2h, 52.09 * k2h)
+    re = (1.275 / bohr_ang, 1.414 / bohr_ang, 2.136 / bohr_ang)
+    beta = (1.867 * bohr_ang, 1.851 * bohr_ang, 1.923 * bohr_ang)
+    sato = (0.02, 0.02, 0.0)
+    # Non-collinear 3D geometry
+    coords = np.array(
+        [[0.1, -0.2, -1.65], [0.25, 0.15, -0.05], [-0.15, 0.3, 1.42]],
+        dtype=float,
+    )
+
+    energy, grad_au = native_mod.leps_energy_and_gradient(coords, de, re, beta, sato, bohr_ang)
+    assert np.allclose(np.sum(grad_au, axis=0), 0.0, atol=1.0e-13)
+
+    h_bohr = 1.0e-5
+    h_ang = h_bohr * bohr_ang
+    fd_grad = np.zeros_like(grad_au)
+    for atom_i in range(3):
+        for axis in range(3):
+            cp = coords.copy()
+            cm = coords.copy()
+            cp[atom_i, axis] += h_ang
+            cm[atom_i, axis] -= h_ang
+            ep, _ = native_mod.leps_energy_and_gradient(cp, de, re, beta, sato, bohr_ang)
+            em, _ = native_mod.leps_energy_and_gradient(cm, de, re, beta, sato, bohr_ang)
+            fd_grad[atom_i, axis] = (ep - em) / (2.0 * h_bohr)
+
+    assert np.allclose(grad_au, fd_grad, rtol=1.0e-8, atol=1.0e-10)
+
+    if native_mod.HAS_NATIVE:
+        monkeypatch.setattr(native_mod, "HAS_NATIVE", False)
+        py_e, py_g = native_mod.leps_energy_and_gradient(coords, de, re, beta, sato, bohr_ang)
+        assert math.isclose(energy, py_e, rel_tol=1.0e-13)
+        assert np.allclose(grad_au, py_g, atol=1.0e-13)
+

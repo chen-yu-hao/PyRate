@@ -8,11 +8,11 @@
 
 | Polyrate 能力 | PyRate 0.2 状态 | 当前边界 / 验收条件 |
 |---|---|---|
-| `*GENERAL` 等 section 语法 | Implemented (单能级路径工作流) | 完整解析全部 112 个 Polyrate 2023 `.dat` 输入；支持静点与 `.fu40` 路径直接执行 |
-| 原子、几何、单位与同位素模型 | Implemented | 支持 IUPAC 与 Polyrate 单同位素（`interface.F` `ams`）质量约定，以及 `2H`/`13C`/`18O`/`37Cl` 等显式同位素 |
+| `*GENERAL` 等 section 语法 | Implemented (单能级路径与 PES/直接动力学工作流) | 完整解析全部 112 个 Polyrate 2023 `.dat` 输入；支持静点、`.fu40` 路径、`POTENTIAL BUILTIN:<name>` / `--pes` 在线势能面与 `validate --strict`（输出含 `section` / `keyword` / `line_number` 的结构化语义错误） |
+| 原子、几何、单位与同位素模型 | Implemented | 支持 IUPAC 与 Polyrate 单同位素（`interface.F` `ams`）质量约定、`MASS` 逐原子质量覆盖，以及 `2H`/`13C`/`18O`/`37Cl` 等显式同位素 |
 | 理想气体平动分区函数 | Implemented | 1 bar 标准态，单/双分子单位与平衡常数 $K_c/K_p$ 测试 |
 | 刚性转子分区函数 | Implemented | 原子、线性、非线性和反应统计因子 `SIGMAF`/`SIGMAR` |
-| 谐振子分区函数与 ZPE | Implemented | 支持频率缩放 `frequency_scale`、低频下限 `frequency_floor_cm1`；负频率排除 |
+| 谐振子分区函数与 ZPE | Implemented | 支持频率缩放 `frequency_scale` / `FREQSCALE`、低频下限 `frequency_floor_cm1`；负频率排除 |
 | 电子分区函数 | Implemented | 多电子态、能级和简并度 |
 | CTST / TST | Implemented | 单/双分子，与 Polyrate `ch5fu40` 系列误差 `0.08%` |
 | canonical VTST / CVT | Implemented | 温度依赖自由能瓶颈与 `FITMAX` 精修，与 Polyrate `ch5fu40` 系列误差 `0.08%` |
@@ -29,9 +29,9 @@
 | μVT / US | Implemented | Beyer–Swinehart 振动态计数与经典转动态和 $N_{\text{rv}}(E, s)$，能量分辨最小通量与统一统计 |
 | Hindered rotor | Implemented | Pitzer–Gwinn 与 Polyrate `BES0` 修正贝塞尔函数扭转内旋转修正 |
 | Morse / anharmonic vibration | Implemented | 一阶非谐常数 $\omega_e x_e$ 精确有界 Morse 能级梯与非谐 ZPE（QQ 待定） |
-| `fu40` 电子结构路径文件 | Implemented | 支持 `freqsource read` 与 `freqsource hessian`（紧缩/全矩阵）、`PROJCT` 梯度投影与 `RPHB` 曲率计算 |
-| MEP integration / Page–McIver / Euler | Planned | 当前读取预计算路径点或 `.fu40`；势能面上直接步进积分待实现 |
-| Direct dynamics hooks (`POT`) | Planned | 尚无编译期 Fortran 势能面（77 个算例）或 Gaussian/GAMESS 实时调用适配器 |
+| `fu40` 电子结构路径文件 | Implemented | 支持双向读写：`freqsource read` 与 `freqsource hessian`（紧缩/全矩阵）、`PROJCT` 梯度投影、`CURV`/`RECT` 曲线/直角内坐标投影与 `RPHB` 曲率计算，及 `--export-fu40` / `save_fu40` 导出；可逆闭环 `rel_tol < 1e-6` |
+| MEP integration / Page–McIver / Euler | Implemented | 支持 Page–McIver LQA（`PM`/`RPM`/`LQA`）、`ES1`、`Euler`/`ESD`、Jackels–Gu–Truhlar 曲线内坐标投影（`CURV`/`RECT`）、`RPHB` 反应路径曲率与模式追踪（`INH`/`SRANGE`/`SSTEP`/`SCALEMASS`/`NOSADDLE`/`SIGN`）。参考算例与来源：Polyrate 2023 `clhbrtr1`/`clhbrtr3` 扩展 LEPS（Kuntz et al., JCP 44, 1168 (1966)）及 `H+H2`/`D+H2`/`H+D2` LEPS、`Müller–Brown`、`EckartValley`；已验证中间量包括鞍点能垒 `10.9993 kcal/mol`、反应热 `-16.160 kcal/mol`、正则频率（`305.89/452.31/1563.29i cm⁻¹` 等）、`CURV` 无虚假负模（对比 `RECT`）、$V_a^G(s)$、$B_{mF}(s)$、$\mu_{\text{eff}}(s)$ 与 $s_{\text{CVT}}$；`.dat ↔ .fu40` 可逆闭环 `rel_tol < 1e-6`，3 位有效数字 `.fu15` 比较器 `rel_tol < 5e-3`，原生/回退一致性 `rel_tol < 1e-8` |
+| Direct dynamics hooks (`POT`) | Implemented (隔离接口；不含编译期 Fortran 专用势能面) | 提供 `PotentialEnergySurface`、`CallablePes` / `PolyratePotAdapter`（Bohr/Hartree 回调）、内置解析势能面（`cl_hbr_leps`、`h3_leps`、`extended_leps`、`muller_brown`、`eckart_valley`）、工作目录隔离的 `ExternalCommandPes`（JSON 协议）、`GaussianProvider`（`.fchk`/`.log` 解析）、`GamessProvider`（`$DATA`/`$GRAD`/`$HESS` 解析）与 `RestartCache`（`GRRESTART`/`RSTTOL = 1e-8 bohr`）；已验证 `Cl+HBr` 与 `H+H2` CLI/TOML 端到端速率、`ExternalCommandPes` 与原生求值误差 `< 1e-8` 及二次运行零子进程缓存命中；Polyrate 内置 Fortran `POT` 子程序需通过 `PolyratePotAdapter` 或外部驱动脚本接入 |
 | Dual-level correction / ISPE | Planned | 尚未实现 `fu50/fu51` 路径双层能量插值校正 |
 | IVTST / IOC | Planned | 尚未实现 |
 | VRC-VTST | Planned | loose transition state 多面采样尚未实现 |
