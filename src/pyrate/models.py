@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -273,6 +274,7 @@ class PathPoint:
     dividing_surface: Species
     effective_mass_amu: float | None = None
     curvatures_bohr_inv: tuple[float, ...] = ()
+    coordinate_frequency_cm1: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "coordinate", float(self.coordinate))
@@ -281,6 +283,14 @@ class PathPoint:
                 raise ValueError("effective_mass_amu must be positive")
             object.__setattr__(self, "effective_mass_amu", float(self.effective_mass_amu))
         object.__setattr__(self, "curvatures_bohr_inv", _as_float_tuple(self.curvatures_bohr_inv))
+        if self.coordinate_frequency_cm1 is not None:
+            if not math.isfinite(float(self.coordinate_frequency_cm1)) or self.coordinate_frequency_cm1 == 0.0:
+                raise ValueError("coordinate_frequency_cm1 must be finite and non-zero")
+            object.__setattr__(
+                self,
+                "coordinate_frequency_cm1",
+                float(self.coordinate_frequency_cm1),
+            )
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any], index: int) -> "PathPoint":
@@ -294,6 +304,11 @@ class PathPoint:
             ),
             curvatures_bohr_inv=tuple(
                 float(value) for value in data.get("curvatures_bohr_inv", ())
+            ),
+            coordinate_frequency_cm1=(
+                float(data["coordinate_frequency_cm1"])
+                if data.get("coordinate_frequency_cm1") is not None
+                else None
             ),
         )
 
@@ -396,7 +411,17 @@ class Reaction:
         return len(self.reactants)
 
 
-_SUPPORTED_METHODS = {"tst", "cvt", "cus", "muvt", "us", "all"}
+_SUPPORTED_METHODS = {
+    "tst",
+    "cvt",
+    "cus",
+    "muvt",
+    "us",
+    "ivtst",
+    "vrc",
+    "vrc-vtst",
+    "all",
+}
 _SUPPORTED_TUNNELING = {
     "none",
     "wigner",
@@ -421,12 +446,24 @@ class CalculationOptions:
     tunneling: str = "none"
     output_rate_unit: str = "auto"
     tunneling_profile: TunnelingProfile | None = None
+    # Optional advanced models.  They are kept as opaque values here so the
+    # core domain models do not import optional numerical backends and create
+    # an import cycle.  ``input.parse_toml_data`` stores validated mappings;
+    # callers may also pass the public dataclasses from ``advanced_vtst`` and
+    # ``environment`` directly.
+    dual_level: Any | None = None
+    vrc_vtst: Any | None = None
+    solvent: Any | None = None
+    surface: Any | None = None
+    pressure: Any | None = None
 
     def __post_init__(self) -> None:
         temperatures = tuple(float(value) for value in self.temperatures_k)
         if not temperatures or any(value <= 0.0 for value in temperatures):
             raise ValueError("temperatures must contain positive values")
-        method = self.method.lower()
+        method = self.method.lower().replace("_", "-")
+        if method == "iv-tst":
+            method = "ivtst"
         tunneling = self.tunneling.lower()
         if method not in _SUPPORTED_METHODS:
             raise ValueError(f"method must be one of {sorted(_SUPPORTED_METHODS)}")

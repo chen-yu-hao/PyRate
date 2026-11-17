@@ -29,14 +29,15 @@
 | μVT / US | Implemented | Beyer–Swinehart 振动态计数与经典转动态和 $N_{\text{rv}}(E, s)$，能量分辨最小通量与统一统计 |
 | Hindered rotor | Implemented | Pitzer–Gwinn 与 Polyrate `BES0` 修正贝塞尔函数扭转内旋转修正 |
 | Morse / anharmonic vibration | Implemented | 一阶非谐常数 $\omega_e x_e$ 精确有界 Morse 能级梯与非谐 ZPE（QQ 待定） |
+| IRC/path-coordinate frequencies | Implemented (Python API) | `coordinate_frequencies`/`hessian_coordinate_frequencies` 提供不均匀路径二阶导数和 Hessian 投影；支持 Å、Bohr 与 SI 单位 |
 | `fu40` 电子结构路径文件 | Implemented | 支持 `freqsource read` 与 `freqsource hessian`（紧缩/全矩阵）、`PROJCT` 梯度投影与 `RPHB` 曲率计算 |
 | MEP integration / Page–McIver / Euler | Planned | 当前读取预计算路径点或 `.fu40`；势能面上直接步进积分待实现 |
 | Direct dynamics hooks (`POT`) | Planned | 尚无编译期 Fortran 势能面（77 个算例）或 Gaussian/GAMESS 实时调用适配器 |
-| Dual-level correction / ISPE | Planned | 尚未实现 `fu50/fu51` 路径双层能量插值校正 |
-| IVTST / IOC | Planned | 尚未实现 |
-| VRC-VTST | Planned | loose transition state 多面采样尚未实现 |
-| SS-QRRK / pressure dependence | Partial | Beyer–Swinehart 与微正则 $N(E)$ 完成；化学活化/解离碰撞模型待接入 |
-| Solvent / surface options | Planned | 尚未实现 |
+| Dual-level correction / ISPE | Implemented (Python API) | `DualLevelCorrection` 对高/低层能量差沿路径线性插值；legacy `fu50/fu51` 自动读取仍待接入 |
+| IVTST / IOC | Implemented (IVTST API) | `iv_tst_rate_si`/`ivtst_rate_si` 在 IRC/MEP 网格上做内禀变分瓶颈；IOC 动力学耦合仍待接入 |
+| VRC-VTST | Implemented (Python API) | `VRCVTSTModel` + Gauss–Legendre 相空间积分；外部 PES/多面采样由回调提供 |
+| SS-QRRK / pressure dependence | Implemented (discrete model) | `SSQRRKModel`、碰撞频率、主方程传播与压力极限；完整 Polyrate legacy 碰撞参数映射仍待接入 |
+| Solvent / surface options | Implemented (Python API) | Born/非极性溶剂修正、Langmuir 覆盖度与表面速率因子；量化外部溶剂/表面势能面由用户回调提供 |
 | `fu30/fu31` legacy unit files | Partial | `.fu40` 已完整实现；旧式固定格式 `.fu30/.fu31` 待映射 |
 | `fu15` summary reader | Implemented | 完整支持 Polyrate 2023 全部 101 个非空 `.fu15` 文件（含 3 类表头与多子表拼接） |
 | Polyrate fixed-format output 1:1 | Planned | 当前输出为结构化 JSON/CSV/表格 |

@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Mapping
 
 from .models import CalculationOptions, Reaction
+from .advanced_vtst import (
+    DualLevelCorrection,
+    VRCVTSTModel,
+    iv_tst_rate_si,
+    vrc_vtst_rate_si,
+)
+from .environment import (
+    CollisionModel,
+    SSQRRKModel,
+    SolvationCorrection,
+    SurfaceModel,
+    pressure_dependent_rate_si,
+    reaction_solvation_delta_g_kj_mol,
+)
+from .path_frequencies import coordinate_frequencies
 from .rates import (
+    activation_gibbs_kj_mol,
     conventional_tst_rate_si,
     convert_rate_from_si,
     cus_rate_si,
@@ -14,6 +31,7 @@ from .rates import (
     muvt_and_us_rates_si,
     normalize_rate_unit,
     reaction_equilibrium_constants,
+    tst_rate_from_activation_gibbs_si,
 )
 from .tunneling import (
     cag_kappa,
@@ -51,6 +69,14 @@ class RateRow:
     kappa_muomt: float | None = None
     equilibrium_kc: float | None = None
     k_reverse_final: float | None = None
+    k_ivtst: float | None = None
+    k_vrc_vtst: float | None = None
+    coordinate_frequency_cm1: float | None = None
+    dual_level_correction_kj_mol: float | None = None
+    solvent_correction_kj_mol: float | None = None
+    surface_rate_correction: float | None = None
+    pressure_pa: float | None = None
+    k_pressure: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -76,16 +102,189 @@ class CalculationResult:
         }
 
 
+def _mapping_or_none(value: Any) -> Mapping[str, Any] | None:
+    return value if isinstance(value, Mapping) else None
+
+
+def _dual_level_profile(
+    reaction: Reaction, options: CalculationOptions
+) -> tuple[DualLevelCorrection | None, tuple[float, ...] | None]:
+    """Build a dual-level correction from options and the reaction path.
+
+    The TOML form may provide only the high-level anchor energies; low-level
+    energies then come from the path's dividing-surface electronic energies.
+    A fully constructed :class:`DualLevelCorrection` can be passed directly.
+    """
+
+    value = options.dual_level
+    if value is None:
+        return None, None
+    if isinstance(value, DualLevelCorrection):
+        return value, value.corrected_energies_kj_mol
+    if reaction.path is None:
+        raise ValueError("dual-level correction requires reaction.path")
+    if not isinstance(value, Mapping):
+        raise TypeError("dual_level must be a DualLevelCorrection or mapping")
+    coordinates = tuple(
+        float(point.coordinate) for point in reaction.path.points
+    )
+    low = tuple(
+        float(point.dividing_surface.electronic_energy_kj_mol)
+        for point in reaction.path.points
+    )
+    configured_coordinates = value.get("coordinates")
+    if configured_coordinates is not None:
+        coordinates = tuple(float(item) for item in configured_coordinates)
+    configured_low = value.get("low_level_energies_kj_mol")
+    if configured_low is not None:
+        low = tuple(float(item) for item in configured_low)
+    high_raw = value.get("high_level_energies_kj_mol", value.get("high_level_energies"))
+    if high_raw is None:
+        raise ValueError("dual_level requires high_level_energies_kj_mol")
+    correction = DualLevelCorrection(
+        coordinates=coordinates,
+        low_level_energies_kj_mol=low,
+        high_level_energies_kj_mol=tuple(float(item) for item in high_raw),
+    )
+    return correction, correction.corrected_energies_kj_mol
+
+
+def _solvation_delta(options: CalculationOptions) -> float:
+    value = options.solvent
+    if value is None:
+        return 0.0
+    if isinstance(value, SolvationCorrection):
+        return value.free_energy_kj_mol()
+    if not isinstance(value, Mapping):
+        raise TypeError("solvent must be a SolvationCorrection or mapping")
+
+    def make(item: Any) -> SolvationCorrection:
+        if isinstance(item, SolvationCorrection):
+            return item
+        if isinstance(item, Mapping):
+            return SolvationCorrection(**dict(item))
+        raise TypeError("solvent species corrections must be mappings")
+
+    ts = make(value.get("transition_state", value.get("ts", value)))
+    reactants = value.get("reactants", ())
+    if isinstance(reactants, Mapping):
+        reactants = (reactants,)
+    return reaction_solvation_delta_g_kj_mol(ts, (make(item) for item in reactants))
+
+
+def _surface_factor(
+    options: CalculationOptions, temperature_k: float
+) -> float | None:
+    value = options.surface
+    if value is None:
+        return None
+    if isinstance(value, SurfaceModel):
+        return value.rate_correction(temperature_k)
+    if not isinstance(value, Mapping):
+        raise TypeError("surface must be a SurfaceModel or mapping")
+    data = dict(value)
+    concentration = data.pop("concentration_m", None)
+    pressure = data.pop("pressure_pa", None)
+    coverage = data.pop("coverage", None)
+    return SurfaceModel(**data).rate_correction(
+        temperature_k,
+        concentration_m=float(concentration) if concentration is not None else None,
+        pressure_pa=float(pressure) if pressure is not None else None,
+        coverage=float(coverage) if coverage is not None else None,
+    )
+
+
+def _path_coordinate_frequency(
+    reaction: Reaction,
+) -> float | None:
+    if reaction.path is None:
+        return None
+    points = reaction.path.points
+    provided = [point.coordinate_frequency_cm1 for point in points]
+    if all(value is not None for value in provided):
+        index = min(
+            range(len(points)),
+            key=lambda idx: abs(points[idx].dividing_surface.electronic_energy_kj_mol),
+        )
+        return float(provided[index])  # type: ignore[arg-type]
+    if any(point.coordinate_frequency_cm1 is not None for point in points):
+        return None
+    try:
+        profile = coordinate_frequencies(
+            [point.coordinate for point in points],
+            [point.dividing_surface.electronic_energy_kj_mol for point in points],
+            [
+                point.effective_mass_amu or reaction.path.reduced_mass_amu
+                for point in points
+            ],
+            coordinate_unit=reaction.path.coordinate_unit,
+        )
+    except (ValueError, TypeError):
+        return None
+    return float(profile.frequencies_cm1[profile.barrier_index])
+
+
+def _pressure_rate(
+    options: CalculationOptions, temperature_k: float
+) -> tuple[float | None, float | None]:
+    value = options.pressure
+    if value is None:
+        return None, None
+    if isinstance(value, SSQRRKModel):
+        # A standalone SS-QRRK model carries the collision frequency but not a
+        # pressure label; treat it as the reference 1 bar model.
+        return pressure_dependent_rate_si(value, 100_000.0), 100_000.0
+    if not isinstance(value, Mapping):
+        raise TypeError("pressure must be an SSQRRKModel or mapping")
+    data = dict(value)
+    pressure = float(data.pop("pressure_pa", data.pop("pressure", 100_000.0)))
+    pressures = data.pop("pressures_pa", None)
+    if pressures is not None:
+        pressure = float(tuple(pressures)[0])
+    grid = data.get("energy_grid_kj_mol")
+    dos = data.get("density_of_states")
+    micro = data.get("microcanonical_rates_s_inv")
+    if grid is None or dos is None or micro is None:
+        raise ValueError(
+            "pressure mapping requires energy_grid_kj_mol, density_of_states, "
+            "and microcanonical_rates_s_inv"
+        )
+    collision = data.pop("collision_frequency_s_inv", None)
+    energy_transfer = float(data.pop("energy_transfer_kj_mol", 10.0))
+    if collision is None:
+        collision_model = CollisionModel(
+            bath_gas_mass_amu=float(data.pop("bath_gas_mass_amu", 28.0134)),
+            collision_diameter_angstrom=float(data.pop("collision_diameter_angstrom", 3.5)),
+            energy_transfer_kj_mol=energy_transfer,
+            efficiency=float(data.pop("efficiency", 1.0)),
+        )
+        # The falloff closure scales a reference collision frequency by
+        # ``pressure / 1 bar``.  Evaluate the hard-sphere model at that
+        # reference pressure so low-pressure rates remain linear in p.
+        collision = collision_model.frequency_s_inv(temperature_k, 100_000.0)
+    model = SSQRRKModel(
+        energy_grid_kj_mol=tuple(float(item) for item in grid),
+        density_of_states=tuple(float(item) for item in dos),
+        microcanonical_rates_s_inv=tuple(float(item) for item in micro),
+        collision_frequency_s_inv=float(collision),
+        temperature_k=float(data.pop("temperature_k", temperature_k)),
+        energy_transfer_kj_mol=energy_transfer,
+    )
+    return pressure_dependent_rate_si(model, pressure), pressure
+
+
 def calculate_rates(
     reaction: Reaction,
     options: CalculationOptions,
     *,
     name: str = "PyRate calculation",
 ) -> CalculationResult:
-    """Calculate TST/CVT/CUS/muVT/US rates and tunneling corrections."""
+    """Calculate gas-phase and optional advanced VTST/environment rates."""
 
-    if options.method in {"cvt", "cus", "muvt", "us", "all"} and reaction.path is None:
+    if options.method in {"cvt", "cus", "muvt", "us", "ivtst", "all"} and reaction.path is None:
         raise ValueError(f"method = {options.method!r} requires a reaction path")
+    if options.method in {"vrc", "vrc-vtst"} and options.vrc_vtst is None:
+        raise ValueError("method = 'vrc-vtst' requires options.vrc_vtst")
     if (
         options.tunneling in {"zct", "mepsag", "sct", "cd-scsag", "omt", "comt", "muomt"}
         and options.tunneling_profile is None
@@ -97,6 +296,10 @@ def calculate_rates(
 
     rate_unit = normalize_rate_unit(options.output_rate_unit, reaction.molecularity)
     rows: list[RateRow] = []
+
+    dual_profile, _ = _dual_level_profile(reaction, options)
+    solvent_delta = _solvation_delta(options)
+    coordinate_frequency = _path_coordinate_frequency(reaction)
 
     zct_profile = (
         options.tunneling_profile
@@ -115,6 +318,14 @@ def calculate_rates(
 
     for temperature in options.temperatures_k:
         delta_g_tst, k_tst_si = conventional_tst_rate_si(reaction, temperature)
+        if solvent_delta:
+            delta_g_tst += solvent_delta
+            k_tst_si = tst_rate_from_activation_gibbs_si(
+                delta_g_tst,
+                temperature,
+                reaction.molecularity,
+                reaction.standard_pressure_pa,
+            )
         k_tst, _ = convert_rate_from_si(
             k_tst_si, reaction.molecularity, rate_unit
         )
@@ -133,6 +344,134 @@ def calculate_rates(
         k_us: float | None = None
         cag_tst_val: float | None = None
         cag_cvt_val: float | None = None
+        k_ivtst_si: float | None = None
+        k_ivtst: float | None = None
+        k_vrc_vtst_si: float | None = None
+        k_vrc_vtst: float | None = None
+        dual_correction_val: float | None = None
+        surface_factor_val = _surface_factor(options, temperature)
+        pressure_rate_si, pressure_pa_val = _pressure_rate(options, temperature)
+
+        if reaction.path is not None and options.method in {"ivtst", "all"}:
+            coordinates = tuple(point.coordinate for point in reaction.path.points)
+            free_energies = tuple(
+                activation_gibbs_kj_mol(
+                    reaction, point.dividing_surface, temperature
+                )
+                for point in reaction.path.points
+            )
+            if dual_profile is not None:
+                corrections = tuple(dual_profile.at(item) for item in coordinates)
+                dual_correction_val = max(corrections, key=abs) if corrections else 0.0
+                free_energies = tuple(
+                    value + correction
+                    for value, correction in zip(free_energies, corrections)
+                )
+            ivtst = iv_tst_rate_si(
+                coordinates,
+                free_energies,
+                temperature,
+                molecularity=reaction.molecularity,
+                standard_pressure_pa=reaction.standard_pressure_pa,
+            )
+            k_ivtst_si = ivtst.rate_si
+            k_ivtst, _ = convert_rate_from_si(
+                k_ivtst_si, reaction.molecularity, rate_unit
+            )
+
+        if options.method in {"vrc", "vrc-vtst", "all"} and options.vrc_vtst is not None:
+            config = options.vrc_vtst
+            if isinstance(config, VRCVTSTModel):
+                vrc = config.rate_si(
+                    temperature,
+                    molecularity=reaction.molecularity,
+                    standard_pressure_pa=reaction.standard_pressure_pa,
+                )
+                k_vrc_vtst_si = vrc.rate_si
+                k_vrc_vtst, _ = convert_rate_from_si(
+                    k_vrc_vtst_si, reaction.molecularity, rate_unit
+                )
+            else:
+                if not isinstance(config, Mapping):
+                    raise TypeError("vrc_vtst must be a VRCVTSTModel or mapping")
+                bounds_raw = config.get("coordinate_bounds")
+                coords_raw = config.get("coordinates")
+                energies_raw = config.get(
+                    "energies_kj_mol", config.get("potential_energies_kj_mol")
+                )
+                if bounds_raw is None:
+                    if coords_raw is None:
+                        raise ValueError("vrc_vtst requires coordinate_bounds or coordinates")
+                    coords_raw = tuple(float(item) for item in coords_raw)
+                    bounds_raw = (coords_raw[0], coords_raw[-1])
+                if energies_raw is not None and coords_raw is not None:
+                    coords_profile = tuple(float(item) for item in coords_raw)
+                    energy_profile = tuple(float(item) for item in energies_raw)
+                    if len(coords_profile) != len(energy_profile):
+                        raise ValueError("VRC coordinates and energies must have matching lengths")
+
+                    def potential_fn(coordinate: float) -> float:
+                        if coordinate <= coords_profile[0]:
+                            return energy_profile[0]
+                        if coordinate >= coords_profile[-1]:
+                            return energy_profile[-1]
+                        for left, right, e_left, e_right in zip(
+                            coords_profile,
+                            coords_profile[1:],
+                            energy_profile,
+                            energy_profile[1:],
+                        ):
+                            if left <= coordinate <= right:
+                                fraction = (coordinate - left) / (right - left)
+                                return e_left + fraction * (e_right - e_left)
+                        return energy_profile[-1]
+                else:
+                    potential_value = float(
+                        config.get(
+                            "energy_kj_mol", config.get("potential_energy_kj_mol", 0.0)
+                        )
+                    )
+
+                    def potential_fn(_coordinate: float) -> float:
+                        return potential_value
+
+                phase_space = config.get("phase_space_weights")
+                phase_fn = None
+                if phase_space is not None and coords_raw is not None:
+                    phase_profile = tuple(float(item) for item in phase_space)
+                    coord_profile = tuple(float(item) for item in coords_raw)
+                    if len(phase_profile) != len(coord_profile):
+                        raise ValueError("VRC phase_space_weights must match coordinates")
+
+                    def phase_fn(coordinate: float) -> float:
+                        if coordinate <= coord_profile[0]:
+                            return phase_profile[0]
+                        if coordinate >= coord_profile[-1]:
+                            return phase_profile[-1]
+                        for left, right, p_left, p_right in zip(
+                            coord_profile,
+                            coord_profile[1:],
+                            phase_profile,
+                            phase_profile[1:],
+                        ):
+                            if left <= coordinate <= right:
+                                fraction = (coordinate - left) / (right - left)
+                                return p_left + fraction * (p_right - p_left)
+                        return phase_profile[-1]
+
+                vrc = vrc_vtst_rate_si(
+                    (float(bounds_raw[0]), float(bounds_raw[1])),
+                    potential_fn,
+                    temperature,
+                    phase_space_fn=phase_fn,
+                    quadrature_points=int(config.get("quadrature_points", 32)),
+                    molecularity=reaction.molecularity,
+                    standard_pressure_pa=reaction.standard_pressure_pa,
+                )
+                k_vrc_vtst_si = vrc.rate_si
+                k_vrc_vtst, _ = convert_rate_from_si(
+                    k_vrc_vtst_si, reaction.molecularity, rate_unit
+                )
 
         if reaction.path is not None:
             cvt = cvt_rate_si(reaction, temperature)
@@ -165,6 +504,30 @@ def calculate_rates(
             cag_cvt_val = cag_kappa(
                 reaction, temperature, variational_coordinate=cvt_coordinate
             )
+
+        # Apply the free-energy solvent correction to every path rate.
+        if solvent_delta:
+            solvent_factor = math.exp(
+                -solvent_delta * 1000.0 / (8.31446261815324 * temperature)
+            )
+            if k_cvt_si is not None:
+                k_cvt_si *= solvent_factor
+                k_cvt, _ = convert_rate_from_si(k_cvt_si, reaction.molecularity, rate_unit)
+            if k_cus_si is not None:
+                k_cus_si *= solvent_factor
+                k_cus, _ = convert_rate_from_si(k_cus_si, reaction.molecularity, rate_unit)
+            if k_muvt_si is not None:
+                k_muvt_si *= solvent_factor
+                k_muvt, _ = convert_rate_from_si(k_muvt_si, reaction.molecularity, rate_unit)
+            if k_us_si is not None:
+                k_us_si *= solvent_factor
+                k_us, _ = convert_rate_from_si(k_us_si, reaction.molecularity, rate_unit)
+            if k_ivtst_si is not None:
+                k_ivtst_si *= solvent_factor
+                k_ivtst, _ = convert_rate_from_si(k_ivtst_si, reaction.molecularity, rate_unit)
+            if k_vrc_vtst_si is not None:
+                k_vrc_vtst_si *= solvent_factor
+                k_vrc_vtst, _ = convert_rate_from_si(k_vrc_vtst_si, reaction.molecularity, rate_unit)
 
         kappa_wigner_val: float | None = None
         if len(reaction.transition_state.imaginary_frequencies_cm1) == 1:
@@ -207,10 +570,21 @@ def calculate_rates(
             base_rate_si = k_muvt_si
         elif options.method == "us" and k_us_si is not None:
             base_rate_si = k_us_si
+        elif options.method == "ivtst" and k_ivtst_si is not None:
+            base_rate_si = k_ivtst_si
+        elif options.method in {"vrc", "vrc-vtst"} and k_vrc_vtst_si is not None:
+            base_rate_si = k_vrc_vtst_si
+        elif options.method == "all" and dual_profile is not None and k_ivtst_si is not None:
+            base_rate_si = k_ivtst_si
         elif options.method == "all" and k_cvt_si is not None:
             base_rate_si = k_cvt_si
         else:
             base_rate_si = k_tst_si
+
+        if pressure_rate_si is not None:
+            base_rate_si = pressure_rate_si
+        if surface_factor_val is not None:
+            base_rate_si *= surface_factor_val
 
         cag_active = (
             (cag_cvt_val if options.method != "tst" else cag_tst_val)
@@ -291,6 +665,22 @@ def calculate_rates(
                 kappa_muomt=kappa_muomt_val,
                 equilibrium_kc=kc_si_val,
                 k_reverse_final=k_rev_final,
+                k_ivtst=k_ivtst,
+                k_vrc_vtst=k_vrc_vtst,
+                coordinate_frequency_cm1=coordinate_frequency,
+                dual_level_correction_kj_mol=dual_correction_val,
+                solvent_correction_kj_mol=(
+                    solvent_delta if options.solvent is not None else None
+                ),
+                surface_rate_correction=surface_factor_val,
+                pressure_pa=pressure_pa_val,
+                k_pressure=(
+                    convert_rate_from_si(
+                        pressure_rate_si, reaction.molecularity, rate_unit
+                    )[0]
+                    if pressure_rate_si is not None
+                    else None
+                ),
             )
         )
 

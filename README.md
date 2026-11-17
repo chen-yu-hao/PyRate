@@ -103,7 +103,7 @@ docs/                架构、输入格式、兼容矩阵和验证方法
 
 当前 0.2.0 版本已完整覆盖单能级谐振/非谐/受阻转子热力学、CTST/CVT/CUS/μVT/US 变分方法、Wigner/CAG/ZCT/SCT/Eckart 隧穿以及 `.dat + .fu40` 反应路径求解。在 Polyrate 2023 官方 `ch5fu40` 基准系列（`tr1`–`tr6`）上，TST 与 CVT 速率相对误差为 `0.08%`，低温强隧穿（298 K 下 $\kappa \approx 1.85 \times 10^5$）的 CVT/ZCT 与 CVT/SCT 全温区吻合度达 `91.6%–97.9%`。
 
-下一阶段待移植的 Polyrate 2023 高级模块包括：大曲率隧穿（LCT/LCG3/LCG4）、反应路径内蕴积分器（Page–McIver / Euler）、双层插值修正（ISPE/IVTST/IOC、`fu50/fu51`）、可变反应坐标（VRC-VTST）、SS-QRRK 压力依赖与外部电子结构/解析势能面直接动力学接口。
+本版本新增了 Python API 形式的 IRC 坐标频率、双层能量校正、IVTST、VRC-VTST、SS-QRRK/主方程压力依赖，以及溶剂和表面修正。仍待移植的 Polyrate 2023 外部耦合包括大曲率隧穿（LCT/LCG3/LCG4）、Page–McIver / Euler 直接路径积分、`fu50/fu51` legacy 文件、完整 IOC 动力学和外部电子结构/解析势能面实时接口。
 
 ### Polyrate 官方输出逐列对照
 

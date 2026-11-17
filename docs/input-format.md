@@ -124,3 +124,47 @@ energy_grid_points = 400
 
 `load_input("case.dat", fu40_path="case.fu40")` 或 `pyrate run case.dat --fu40 case.fu40` 可直接读取 Polyrate 2023 格式的 `.dat` 控制文件与 `.fu40` 电子结构路径文件（支持 `*point40` 下的 `freqsource read` 显式频率/曲率，以及 `freqsource hessian` 紧缩下三角或全矩阵笛卡尔力常数自动 `PROJCT` 投影与 `RPHB` 曲率计算）。
 
+
+## 7. 高级路径、双层、溶剂/表面与压力依赖
+
+`method = "ivtst"` 会在 IRC/MEP 路径上寻找内禀变分瓶颈；`method = "vrc-vtst"` 对松散过渡态的相空间权重做 Gauss–Legendre 积分。路径点还可以提供 `coordinate_frequency_cm1`，否则 PyRate 会从路径势能和有效质量计算 signed IRC 坐标频率。
+
+```toml
+[calculation]
+method = "ivtst"              # ivtst | vrc-vtst | 以及原有 tst/cvt/...
+temperatures_k = [300.0, 500.0]
+
+[dual_level]
+# high - low 电子能校正沿坐标线性插值
+coordinates = [-1.0, 0.0, 1.0]
+low_level_energies_kj_mol = [0.0, 45.0, 0.0]
+high_level_energies_kj_mol = [0.5, 47.2, 1.0]
+
+[vrc_vtst]
+coordinate_bounds = [-2.0, 2.0]
+coordinates = [-2.0, 0.0, 2.0]
+energies_kj_mol = [20.0, 35.0, 20.0]
+phase_space_weights = [1.0, 2.0, 1.0]
+quadrature_points = 32
+
+[solvent]
+dielectric = 78.4
+charge_e = 0.0
+nonpolar_surface_angstrom2 = 40.0
+surface_tension_kj_mol_angstrom2 = 0.003
+
+[surface]
+adsorption_free_energy_kj_mol = -18.0
+pressure_pa = 100000.0
+sticking_coefficient = 0.8
+
+[pressure]
+pressure_pa = 100000.0
+energy_grid_kj_mol = [0.0, 10.0, 20.0, 30.0]
+density_of_states = [1.0, 2.0, 3.0, 4.0]
+microcanonical_rates_s_inv = [0.0, 100.0, 2000.0, 10000.0]
+collision_frequency_s_inv = 2.0e5
+energy_transfer_kj_mol = 8.0
+```
+
+`[solvent]` 使用 Born + 非极性自由能修正；`[surface]` 使用 Langmuir 覆盖度和位阻因子；`[pressure]` 使用 SS-QRRK/主方程离散模型。结果的 CSV/JSON 行包含 `coordinate_frequency_cm1`、`k_ivtst`、`k_vrc_vtst`、`k_pressure` 以及相应修正量。
