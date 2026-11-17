@@ -4,16 +4,16 @@
 
 PyRate 不机械翻译 Fortran 全局数组，而是把 Polyrate 的职责拆成四层：
 
-1. **模型层**：`Atom`、`HinderedRotor`、`Species`、`PathPoint`、`Reaction`、`ReactionPath`、`TunnelingProfile` 和 `CalculationOptions`；
-2. **物理层**：谐振/Morse 非谐/Pitzer–Gwinn 受阻转子分区函数、标准 Gibbs 能、CTST/CVT/CUS、微正则 μVT/US、以及 CAG/Wigner/ZCT/SCT/Eckart 隧穿修正（COMT/μOMT 在 LCT 实现前等同 SCT）；
-3. **数值层**：C++17 热点与 1:1 等价的 Python 回退；
-4. **适配层**：TOML、Polyrate `.dat + .fu40` 转换与执行器、`fu15` reference parser 和 CLI。
+1. **模型层**：`Atom`、`HinderedRotor`、`Species`、`PathPoint`、`Reaction`、`ReactionPath`、`TunnelingProfile`、`CalculationOptions` 和 `MepOptions`；
+2. **物理层**：谐振/Morse 非谐/Pitzer–Gwinn 受阻转子分区函数、标准 Gibbs 能、CTST/CVT/CUS、微正则 μVT/US、CAG/Wigner/ZCT/SCT/Eckart 隧穿修正，以及解析/外部势能面上的静点优化与反应路径 MEP 积分（COMT/μOMT 在 LCT 实现前等同 SCT）；
+3. **数值层**：C++17 热点（`pyrate-cpp-0.3`）与 1:1 等价的 Python 回退；
+4. **适配层**：TOML、Polyrate `.dat + .fu40` 双向转换与执行器（含严格语义校验）、独立工作目录隔离的直接动力学子进程适配器（`ExternalCommandPes`/`GaussianProvider`/`GamessProvider` + `RestartCache`）、`fu15` reference parser 和 CLI。
 
 这种分层使每个公式可以独立测试，也避免将 Polyrate 的固定大小 COMMON block 和文件单元号传播到现代 API。
 
 ## 2. Python / C++ 边界
 
-`cpp/kernels.cpp` 当前提供：
+`cpp/kernels.cpp`（ABI 版本 `pyrate-cpp-0.3`）当前提供：
 
 - 谐振子 `log(q_vib)` 批处理；
 - Wigner 系数；
@@ -21,11 +21,14 @@ PyRate 不机械翻译 Fortran 全局数组，而是把 Polyrate 的职责拆成
 - 常数约化质量与位置相关有效质量 $\mu_{\text{eff}}(s)$ 的分段线性势垒 WKB 作用量指数 $\theta(E)$；
 - 包含 Kemble 均匀半经典透射与 `BOLTZ` 非经典反射的 canonical thermal WKB / SCT 积分；
 - 对称与非对称 Eckart 势垒解析透射系数与热积分；
-- Beyer–Swinehart 振动态密度与状态和计数。
+- Beyer–Swinehart 振动态密度与状态和计数；
+- 对称投影 `project_symmetric_matrix`：计算 $P H P$ 对称正交投影以剔除刚体/反应坐标方向；
+- Page–McIver LQA 子步积分 `page_mciver_lqa_step`：基于局部二次近似谱分解幂级数演化质量标度坐标与切线；
+- 三体扩展 LEPS 解析内核 `leps_energy_and_gradient`：计算 LEPS 势能及解析 Cartesian 梯度。
 
-C++ 函数在读取 Python 序列后释放 GIL 执行长循环。`src/pyrate/native.py` 是唯一公共桥接层；导入扩展失败或设置 `PYRATE_DISABLE_NATIVE=1` 时调用等价 Python 算法。
+C++ 函数在读取 Python 序列或缓冲后释放 GIL（针对数值循环）并与 NumPy/LAPACK 协同工作。`src/pyrate/native.py` 是唯一公共桥接层；导入扩展失败或设置 `PYRATE_DISABLE_NATIVE=1` 时调用等价纯 Python 算法。
 
-正规模的对称本征问题交给 NumPy/LAPACK；质量加权、静点直接对角化（`FDIAG`）、广义过渡态上的梯度与刚体空间投影（`PROJCT`）、以及反应路径曲率 $B_{mF}(s)$ 计算（`RPHB`）保留在 `normal_modes.py` 与 `input.py` 中，便于审计。
+正规模的对称本征问题交给 NumPy/LAPACK；质量加权、静点优化与直接对角化（`FDIAG`）、广义过渡态上的曲线内坐标修正与刚体投影（`PROJCT`）、以及反应路径曲率 $B_{mF}(s)$ 计算（`RPHB`）分别由 `normal_modes.py`、`pes.py`、`mep.py` 与 `input.py` 清晰承载，便于审计。
 
 ## 3. 标准态、CTST、CVT 与 CUS
 
@@ -94,7 +97,26 @@ a(s) = |κ(s)| t(s) - (1/2) t(s)^2 (d²t / ds²)
 μ_eff(s) = μ * min(1, exp(-2 a(s) - a(s)^2 + (dt/ds)^2))
 ```
 
-## 6. 线程与可复现性
+## 6. 势能面、MEP 积分、曲线内坐标投影与直接动力学
+
+1. **势能面抽象与静点优化（`pes.py`）**：
+   - `PotentialEnergySurface` 统一管理能量、梯度与有限差分（中心/前向）Cartesian Hessian，支持解析包装器 `CallablePes`、`PolyratePotAdapter`（Bohr/Hartree 接口）、三体 `ExtendedLepsSurface`（内置 `cl_hbr_leps_surface` 与 `h3_leps_surface`）、`MullerBrownSurface`、`EckartValleySurface` 以及固定原子数的超分子碎片投影器 `SupermoleculeFragmentPes`；
+   - `optimize_minimum`（带线搜索的 BFGS）与 `optimize_saddle`（PRFO 本征矢追踪）直接返回优化构型、正规模结果与 `build_species_from_pes` 物种模型。
+
+2. **反应路径积分（`mep.py`）**：
+   - 在质量标度坐标 $\tilde{x}_i = \sqrt{m_i / \mu} \, x_i$（Bohr）下支持三类 Polyrate 积分方案：
+     - `pm`（`RPM` / `LQA`）：Page–McIver 局部二次近似，含鞍点二阶曲率矢量 $\mathbf{x}''(0)$ 起步；
+     - `es1`：基于相邻梯度夹角 `stabilization_angle_deg` 自动折半子步长的稳定化 Euler；
+     - `euler`（`ESD`）：经典最速下降法。
+   - 当梯度与路径切线在非驻点处偏离直角轴时，`curvilinear_corrected_hessian`（Jackels–Gu–Truhlar 方法）由非冗余键长、键角与二面角 Wilson $B$ 矩阵及二阶张量导数构建内坐标曲率修正项 $H_{\text{curv}} = H - \sum_q g_q C_q$，消除离开鞍点后虚假的直角坐标弯曲虚频；
+   - 通过沿路径有限差分求解反应路径曲率 $B_{mF}(s)$（`RPHB`），并按正则模本征矢重叠（`mode_tracking`）追踪模式连续性；结果 `MepResult` 可双向序列化为 Polyrate 2023 `.fu40`（`to_fu40_text` / `save_fu40`）。
+
+3. **直接动力学接口与重启缓存（`direct_dynamics.py`）**：
+   - `DirectDynamicsProvider` 为每个单点求值分配独立临时工作目录并在失败或超时时抛出结构化 `DirectDynamicsError`；
+   - 内置通用 JSON 子进程接口 `ExternalCommandPes`、Gaussian 接口 `GaussianProvider`（`.fchk` / `.log` 解析）和 GAMESS 接口 `GamessProvider`（`$DATA` / `$GRAD` / `$HESS` 解析）；
+   - `RestartCache` 按 `(symbols, charge, multiplicity, coords_bohr)` 在 `rst_tol_bohr`（默认 $10^{-8}\text{ Bohr}$，对应 Gaussrate `GRRESTART`/`RSTTOL`）内命中复用已有能量/梯度/Hessian 并原子写入 JSON 缓存文件。
+
+## 7. 线程与可复现性
 
 - 所有输入在进入内核前复制成连续的 `double` 向量；
 - 默认不启用 `-march=native`，从而保证可移植 wheel；

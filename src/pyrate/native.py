@@ -40,7 +40,7 @@ def backend_info() -> dict[str, str | bool]:
     return {
         "native": HAS_NATIVE,
         "backend": "cpp" if HAS_NATIVE else "python",
-        "version": _cpp.native_version() if HAS_NATIVE else "python-fallback-0.2",
+        "version": _cpp.native_version() if HAS_NATIVE else "python-fallback-0.3",
     }
 
 
@@ -470,4 +470,255 @@ def beyer_swinehart(
         for index in range(step, grain_count):
             density[index] += density[index - step]
     return density
+
+
+_GL10_NODES = (
+    0.013046735741414128,
+    0.06746831665550773,
+    0.16029521585048778,
+    0.2833023029353764,
+    0.4255628305091844,
+    0.5744371694908156,
+    0.7166976970646236,
+    0.8397047841495122,
+    0.9325316833444923,
+    0.9869532642585859,
+)
+_GL10_WEIGHTS = (
+    0.03333567215434407,
+    0.0747256745752902,
+    0.109543181257991,
+    0.13463335965499826,
+    0.1477621123573764,
+    0.1477621123573764,
+    0.13463335965499826,
+    0.109543181257991,
+    0.0747256745752902,
+    0.03333567215434407,
+)
+
+
+def project_symmetric_matrix(
+    matrix: np.ndarray | Sequence[Sequence[float]],
+    basis: np.ndarray | Sequence[Sequence[float]],
+) -> np.ndarray:
+    """Return symmetrized ``(I - B B^T) M (I - B B^T)`` for orthonormal columns ``B``."""
+
+    mat = np.asarray(matrix, dtype=float)
+    bas = np.asarray(basis, dtype=float)
+    if mat.ndim != 2 or mat.shape[0] != mat.shape[1] or mat.shape[0] == 0:
+        raise ValueError("matrix must be a non-empty square 2D array")
+    dim = mat.shape[0]
+    if bas.ndim == 1:
+        bas = bas.reshape(dim, 1) if bas.size > 0 else np.zeros((dim, 0), dtype=float)
+    if bas.ndim != 2 or bas.shape[0] != dim:
+        raise ValueError("basis must have shape (dim, n_basis)")
+    n_basis = bas.shape[1]
+    if HAS_NATIVE:
+        flat = _cpp.project_symmetric_matrix(
+            np.ascontiguousarray(mat, dtype=float).ravel().tolist(),
+            np.ascontiguousarray(bas, dtype=float).ravel().tolist(),
+            dim,
+            n_basis,
+        )
+        return np.asarray(flat, dtype=float).reshape((dim, dim))
+
+    m_sym = 0.5 * (mat + mat.T)
+    if n_basis == 0:
+        return np.asarray(m_sym, dtype=float)
+    t_mat = m_sym @ bas
+    c_mat = bas.T @ t_mat
+    w_mat = t_mat - 0.5 * (bas @ c_mat)
+    out = m_sym - w_mat @ bas.T - bas @ w_mat.T
+    return np.asarray(0.5 * (out + out.T), dtype=float)
+
+
+def page_mciver_lqa_step(
+    gradient: Sequence[float] | np.ndarray,
+    eigenvalues: Sequence[float] | np.ndarray,
+    eigenvectors: Sequence[Sequence[float]] | np.ndarray,
+    step_size_bohr: float,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Solve the Page–McIver LQA steepest-descent step for target arc length ``step_size_bohr``."""
+
+    grad = np.asarray(gradient, dtype=float)
+    evals = np.asarray(eigenvalues, dtype=float)
+    evecs = np.asarray(eigenvectors, dtype=float)
+    if grad.ndim != 1 or grad.size == 0:
+        raise ValueError("gradient must be a non-empty 1D array")
+    dim = grad.size
+    if evals.shape != (dim,) or evecs.shape != (dim, dim):
+        raise ValueError("eigenvalues/eigenvectors shapes must match gradient dimension")
+    if step_size_bohr <= 0.0:
+        raise ValueError("step_size_bohr must be positive")
+    if HAS_NATIVE:
+        dx_raw, tan_raw, u_star = _cpp.page_mciver_lqa_step(
+            grad.tolist(),
+            evals.tolist(),
+            np.ascontiguousarray(evecs, dtype=float).ravel().tolist(),
+            dim,
+            float(step_size_bohr),
+        )
+        return (
+            np.asarray(dx_raw, dtype=float),
+            np.asarray(tan_raw, dtype=float),
+            float(u_star),
+        )
+
+    g_mode = evecs.T @ grad
+    g_norm2 = float(np.dot(g_mode, g_mode))
+    if g_norm2 <= 0.0:
+        zeros = np.zeros(dim, dtype=float)
+        return zeros, zeros.copy(), 0.0
+    g_norm = math.sqrt(g_norm2)
+    nonzero = g_mode != 0.0
+    gm_nz = g_mode[nonzero]
+    lam_nz = evals[nonzero]
+
+    def speed(tau: float) -> float:
+        args = np.clip(-lam_nz * tau, -300.0, 50.0)
+        scaled = gm_nz * np.exp(args)
+        return float(math.sqrt(float(np.dot(scaled, scaled))))
+
+    def arc_length(u: float) -> float:
+        if u <= 0.0:
+            return 0.0
+        total = 0.0
+        for node, weight in zip(_GL10_NODES, _GL10_WEIGHTS, strict=True):
+            total += weight * speed(u * node)
+        return u * total
+
+    u_lo = 0.0
+    u_hi = step_size_bohr / g_norm
+    phi_hi = arc_length(u_hi)
+    finite_limit = False
+    for _ in range(60):
+        if phi_hi >= step_size_bohr:
+            break
+        if speed(u_hi) <= 1.0e-12 * g_norm:
+            finite_limit = True
+            break
+        u_lo = u_hi
+        u_hi *= 2.0
+        phi_hi = arc_length(u_hi)
+        if u_hi > 1.0e6 * (step_size_bohr / g_norm):
+            finite_limit = True
+            break
+
+    u_star = u_hi
+    if not finite_limit:
+        u = 0.5 * (u_lo + u_hi)
+        tol = 1.0e-13 * max(1.0, step_size_bohr)
+        for _ in range(50):
+            phi = arc_length(u)
+            diff = phi - step_size_bohr
+            if abs(diff) <= tol or (u_hi - u_lo) <= 1.0e-14 * max(1.0, u):
+                u_star = u
+                break
+            if diff < 0.0:
+                u_lo = u
+            else:
+                u_hi = u
+            deriv = speed(u)
+            candidate = 0.5 * (u_lo + u_hi)
+            if deriv > 1.0e-15 * g_norm:
+                newton = u - diff / deriv
+                if u_lo < newton < u_hi:
+                    candidate = newton
+            u = candidate
+            u_star = u
+
+    coeffs = np.zeros(dim, dtype=float)
+    d_end_mode = np.zeros(dim, dtype=float)
+    for mode in range(dim):
+        gm = float(g_mode[mode])
+        if gm == 0.0:
+            continue
+        lam = float(evals[mode])
+        x = lam * u_star
+        if abs(x) <= 1.0e-5:
+            series = 1.0 - 0.5 * x + (x**2) / 6.0 - (x**3) / 24.0 + (x**4) / 120.0
+            coeffs[mode] = -gm * u_star * series
+        else:
+            arg = min(50.0, max(-300.0, -x))
+            coeffs[mode] = gm * math.expm1(arg) / lam
+        end_arg = min(50.0, max(-300.0, -x))
+        d_end_mode[mode] = -gm * math.exp(end_arg)
+
+    delta_x = evecs @ coeffs
+    end_tangent = evecs @ d_end_mode
+    t_norm = float(np.linalg.norm(end_tangent))
+    if t_norm > 0.0:
+        end_tangent /= t_norm
+    return delta_x, end_tangent, float(u_star)
+
+
+def leps_energy_and_gradient(
+    coords_angstrom: np.ndarray | Sequence[Sequence[float]],
+    de_hartree: tuple[float, float, float],
+    re_bohr: tuple[float, float, float],
+    beta_bohr_inv: tuple[float, float, float],
+    sato: tuple[float, float, float],
+    bohr_angstrom: float,
+) -> tuple[float, np.ndarray]:
+    """Evaluate 3-atom Extended LEPS energy (Hartree) and gradient (Hartree/bohr)."""
+
+    coords = np.asarray(coords_angstrom, dtype=float).reshape((3, 3))
+    if bohr_angstrom <= 0.0:
+        raise ValueError("bohr_angstrom must be positive")
+    if HAS_NATIVE:
+        energy, grad_raw = _cpp.leps_energy_and_gradient(
+            coords.ravel().tolist(),
+            list(de_hartree),
+            list(re_bohr),
+            list(beta_bohr_inv),
+            list(sato),
+            float(bohr_angstrom),
+        )
+        return float(energy), np.asarray(grad_raw, dtype=float).reshape((3, 3))
+
+    r_bohr = coords / bohr_angstrom
+    pairs = ((0, 1), (1, 2), (0, 2))
+    dx_list = [r_bohr[a] - r_bohr[b] for a, b in pairs]
+    r_vals = [float(np.linalg.norm(vec)) for vec in dx_list]
+
+    root2 = math.sqrt(2.0)
+    x_vals: list[float] = []
+    op3z: list[float] = []
+    zp3: list[float] = []
+    coul: list[float] = []
+    exch: list[float] = []
+    for p in range(3):
+        zp = sato[p]
+        o = 1.0 + 3.0 * zp
+        z3 = zp + 3.0
+        do4z = de_hartree[p] / (4.0 * (1.0 + zp))
+        xp = math.exp(-beta_bohr_inv[p] * (r_vals[p] - re_bohr[p]))
+        x_vals.append(xp)
+        op3z.append(o)
+        zp3.append(z3)
+        coul.append(do4z * (z3 * xp - 2.0 * o) * xp)
+        exch.append(do4z * (o * xp - 2.0 * z3) * xp)
+
+    rad = math.sqrt(
+        (exch[0] - exch[1]) ** 2 + (exch[1] - exch[2]) ** 2 + (exch[2] - exch[0]) ** 2
+    )
+    energy = coul[0] + coul[1] + coul[2] - rad / root2
+    sum_ex = sum(exch)
+
+    grad = np.zeros((3, 3), dtype=float)
+    for p, (ia, ib) in enumerate(pairs):
+        if r_vals[p] <= 0.0:
+            continue
+        zp = sato[p]
+        b_coef = beta_bohr_inv[p] * (de_hartree[p] / (2.0 * (1.0 + zp)))
+        ex_deriv = 0.0
+        if rad > 1.0e-14:
+            ex_deriv = ((3.0 * exch[p] - sum_ex) * (op3z[p] * x_vals[p] - zp3[p])) / (root2 * rad)
+        dedr = b_coef * x_vals[p] * (ex_deriv - zp3[p] * x_vals[p] + op3z[p])
+        vec = (dedr / r_vals[p]) * dx_list[p]
+        grad[ia] += vec
+        grad[ib] -= vec
+    return energy, grad
+
 

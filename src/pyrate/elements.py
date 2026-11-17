@@ -229,3 +229,27 @@ def atomic_mass_amu(label: str, *, mass_convention: str = "iupac") -> float:
             f"no built-in mass for {label!r}; provide mass_amu explicitly"
         ) from exc
 
+
+ATOMIC_NUMBERS: dict[str, int] = {
+    "H": 1, "D": 1, "T": 1, "He": 2,
+    "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7, "O": 8, "F": 9, "Ne": 10,
+    "Na": 11, "Mg": 12, "Al": 13, "Si": 14, "P": 15, "S": 16, "Cl": 17, "Ar": 18,
+    "K": 19, "Ca": 20, "Sc": 21, "Ti": 22, "V": 23, "Cr": 24, "Mn": 25, "Fe": 26,
+    "Co": 27, "Ni": 28, "Cu": 29, "Zn": 30, "Ga": 31, "Ge": 32, "As": 33, "Se": 34,
+    "Br": 35, "Kr": 36, "Rb": 37, "Sr": 38, "Y": 39, "Zr": 40, "Nb": 41, "Mo": 42,
+    "Ru": 44, "Rh": 45, "Pd": 46, "Ag": 47, "Cd": 48, "In": 49, "Sn": 50, "Sb": 51,
+    "Te": 52, "I": 53, "Xe": 54, "Cs": 55, "Ba": 56, "La": 57, "Ce": 58, "W": 74,
+    "Pt": 78, "Au": 79, "Hg": 80, "Pb": 82,
+}
+
+
+def atomic_number(label: str) -> int:
+    """Return the nuclear charge Z for an element symbol, isotope, or atom label."""
+
+    symbol = canonical_symbol(label)
+    try:
+        return ATOMIC_NUMBERS[symbol]
+    except KeyError as exc:
+        raise ValueError(f"unknown atomic number for atom label {label!r}") from exc
+
+

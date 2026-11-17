@@ -750,8 +750,495 @@ PyObject* py_beyer_swinehart(PyObject*, PyObject* args) {
     return result;
 }
 
+std::vector<double> project_symmetric_matrix_impl(const std::vector<double>& matrix,
+                                                  const std::vector<double>& basis,
+                                                  const std::size_t dim,
+                                                  const std::size_t n_basis) {
+    std::vector<double> out(dim * dim, 0.0);
+    for (std::size_t row = 0; row < dim; ++row) {
+        out[row * dim + row] = matrix[row * dim + row];
+        for (std::size_t col = row + 1; col < dim; ++col) {
+            const double avg = 0.5 * (matrix[row * dim + col] + matrix[col * dim + row]);
+            out[row * dim + col] = avg;
+            out[col * dim + row] = avg;
+        }
+    }
+    if (n_basis == 0) {
+        return out;
+    }
+
+    // Compute T = M * B (dim x n_basis)
+    std::vector<double> t_mat(dim * n_basis, 0.0);
+    for (std::size_t row = 0; row < dim; ++row) {
+        for (std::size_t col = 0; col < dim; ++col) {
+            const double m_rc = out[row * dim + col];
+            if (m_rc == 0.0) {
+                continue;
+            }
+            for (std::size_t k = 0; k < n_basis; ++k) {
+                t_mat[row * n_basis + k] += m_rc * basis[col * n_basis + k];
+            }
+        }
+    }
+
+    // Compute C = B^T * T (n_basis x n_basis)
+    std::vector<double> c_mat(n_basis * n_basis, 0.0);
+    for (std::size_t row = 0; row < dim; ++row) {
+        for (std::size_t k1 = 0; k1 < n_basis; ++k1) {
+            const double b_rk1 = basis[row * n_basis + k1];
+            for (std::size_t k2 = 0; k2 < n_basis; ++k2) {
+                c_mat[k1 * n_basis + k2] += b_rk1 * t_mat[row * n_basis + k2];
+            }
+        }
+    }
+
+    // Compute W = T - 0.5 * B * C (dim x n_basis)
+    std::vector<double> w_mat = t_mat;
+    for (std::size_t row = 0; row < dim; ++row) {
+        for (std::size_t k1 = 0; k1 < n_basis; ++k1) {
+            double bc = 0.0;
+            for (std::size_t k2 = 0; k2 < n_basis; ++k2) {
+                bc += basis[row * n_basis + k2] * c_mat[k2 * n_basis + k1];
+            }
+            w_mat[row * n_basis + k1] -= 0.5 * bc;
+        }
+    }
+
+    // Out = Out - W * B^T - B * W^T, guaranteed symmetric
+    for (std::size_t row = 0; row < dim; ++row) {
+        for (std::size_t col = row; col < dim; ++col) {
+            double correction = 0.0;
+            for (std::size_t k = 0; k < n_basis; ++k) {
+                correction += w_mat[row * n_basis + k] * basis[col * n_basis + k] +
+                              basis[row * n_basis + k] * w_mat[col * n_basis + k];
+            }
+            const double val = out[row * dim + col] - correction;
+            out[row * dim + col] = val;
+            out[col * dim + row] = val;
+        }
+    }
+    return out;
+}
+
+struct LqaStepResult {
+    std::vector<double> delta_x;
+    std::vector<double> end_tangent;
+    double u_star;
+};
+
+LqaStepResult page_mciver_lqa_step_impl(const std::vector<double>& gradient,
+                                        const std::vector<double>& eigenvalues,
+                                        const std::vector<double>& eigenvectors,
+                                        const std::size_t dim,
+                                        const double step_size) {
+    // Expand gradient in Hessian eigenbasis: g_i = v_i^T g
+    std::vector<double> g_mode(dim, 0.0);
+    double g_norm2 = 0.0;
+    for (std::size_t mode = 0; mode < dim; ++mode) {
+        double dot = 0.0;
+        for (std::size_t row = 0; row < dim; ++row) {
+            dot += eigenvectors[row * dim + mode] * gradient[row];
+        }
+        g_mode[mode] = dot;
+        g_norm2 += dot * dot;
+    }
+
+    if (g_norm2 <= 0.0) {
+        return {std::vector<double>(dim, 0.0), std::vector<double>(dim, 0.0), 0.0};
+    }
+    const double g_norm = std::sqrt(g_norm2);
+
+    // 10-point Gauss-Legendre quadrature on [0, 1]
+    constexpr double gl_nodes[10] = {
+        0.013046735741414128, 0.06746831665550773, 0.16029521585048778, 0.2833023029353764,
+        0.4255628305091844,  0.5744371694908156,  0.7166976970646236,  0.8397047841495122,
+        0.9325316833444923,  0.9869532642585859,
+    };
+    constexpr double gl_weights[10] = {
+        0.03333567215434407, 0.0747256745752902,  0.109543181257991,   0.13463335965499826,
+        0.1477621123573764,  0.1477621123573764,  0.13463335965499826, 0.109543181257991,
+        0.0747256745752902,  0.03333567215434407,
+    };
+
+    auto speed = [&](const double tau) -> double {
+        double sum_sq = 0.0;
+        for (std::size_t mode = 0; mode < dim; ++mode) {
+            const double gm = g_mode[mode];
+            if (gm == 0.0) {
+                continue;
+            }
+            const double arg = std::clamp(-eigenvalues[mode] * tau, -300.0, 50.0);
+            const double scaled = gm * std::exp(arg);
+            sum_sq += scaled * scaled;
+        }
+        return std::sqrt(sum_sq);
+    };
+
+    auto arc_length = [&](const double u) -> double {
+        if (u <= 0.0) {
+            return 0.0;
+        }
+        double integral = 0.0;
+        for (int q = 0; q < 10; ++q) {
+            integral += gl_weights[q] * speed(u * gl_nodes[q]);
+        }
+        return u * integral;
+    };
+
+    double u_lo = 0.0;
+    double u_hi = step_size / g_norm;
+    double phi_hi = arc_length(u_hi);
+    bool finite_limit = false;
+    for (int expand = 0; expand < 60 && phi_hi < step_size; ++expand) {
+        const double sp_hi = speed(u_hi);
+        if (sp_hi <= 1.0e-12 * g_norm) {
+            finite_limit = true;
+            break;
+        }
+        u_lo = u_hi;
+        u_hi *= 2.0;
+        phi_hi = arc_length(u_hi);
+        if (u_hi > 1.0e6 * (step_size / g_norm)) {
+            finite_limit = true;
+            break;
+        }
+    }
+
+    double u_star = u_hi;
+    if (!finite_limit) {
+        double u = 0.5 * (u_lo + u_hi);
+        const double tol = 1.0e-13 * std::max(1.0, step_size);
+        for (int iter = 0; iter < 50; ++iter) {
+            const double phi = arc_length(u);
+            const double diff = phi - step_size;
+            if (std::abs(diff) <= tol || (u_hi - u_lo) <= 1.0e-14 * std::max(1.0, u)) {
+                u_star = u;
+                break;
+            }
+            if (diff < 0.0) {
+                u_lo = u;
+            } else {
+                u_hi = u;
+            }
+            const double deriv = speed(u);
+            double candidate = 0.5 * (u_lo + u_hi);
+            if (deriv > 1.0e-15 * g_norm) {
+                const double newton = u - diff / deriv;
+                if (newton > u_lo && newton < u_hi) {
+                    candidate = newton;
+                }
+            }
+            u = candidate;
+            u_star = u;
+        }
+    }
+
+    std::vector<double> coeffs(dim, 0.0);
+    std::vector<double> d_end_mode(dim, 0.0);
+    for (std::size_t mode = 0; mode < dim; ++mode) {
+        const double gm = g_mode[mode];
+        if (gm == 0.0) {
+            continue;
+        }
+        const double lam = eigenvalues[mode];
+        const double x = lam * u_star;
+        if (std::abs(x) <= 1.0e-5) {
+            const double series =
+                1.0 - 0.5 * x + (x * x) / 6.0 - (x * x * x) / 24.0 + (x * x * x * x) / 120.0;
+            coeffs[mode] = -gm * u_star * series;
+        } else {
+            const double arg = std::clamp(-x, -300.0, 50.0);
+            coeffs[mode] = gm * std::expm1(arg) / lam;
+        }
+        const double end_arg = std::clamp(-x, -300.0, 50.0);
+        d_end_mode[mode] = -gm * std::exp(end_arg);
+    }
+
+    std::vector<double> delta_x(dim, 0.0);
+    std::vector<double> end_tangent(dim, 0.0);
+    for (std::size_t row = 0; row < dim; ++row) {
+        double dx_val = 0.0;
+        double t_val = 0.0;
+        for (std::size_t mode = 0; mode < dim; ++mode) {
+            const double v_rm = eigenvectors[row * dim + mode];
+            dx_val += v_rm * coeffs[mode];
+            t_val += v_rm * d_end_mode[mode];
+        }
+        delta_x[row] = dx_val;
+        end_tangent[row] = t_val;
+    }
+
+    double t_norm2 = 0.0;
+    for (const double v : end_tangent) {
+        t_norm2 += v * v;
+    }
+    if (t_norm2 > 0.0) {
+        const double inv_t = 1.0 / std::sqrt(t_norm2);
+        for (double& v : end_tangent) {
+            v *= inv_t;
+        }
+    }
+    return {std::move(delta_x), std::move(end_tangent), u_star};
+}
+
+std::pair<double, std::vector<double>> leps_energy_and_gradient_impl(
+    const std::vector<double>& coords_angstrom,
+    const std::vector<double>& de_hartree,
+    const std::vector<double>& re_bohr,
+    const std::vector<double>& beta_bohr_inv,
+    const std::vector<double>& sato,
+    const double bohr_angstrom) {
+    const double inv_bohr = 1.0 / bohr_angstrom;
+    double r_bohr[9];
+    for (int idx = 0; idx < 9; ++idx) {
+        r_bohr[idx] = coords_angstrom[static_cast<std::size_t>(idx)] * inv_bohr;
+    }
+
+    // Atom pairs: 0 -> (0, 1) AB, 1 -> (1, 2) BC, 2 -> (0, 2) AC
+    constexpr int pair_a[3] = {0, 1, 0};
+    constexpr int pair_b[3] = {1, 2, 2};
+    double dx[3][3];
+    double r[3];
+    for (int p = 0; p < 3; ++p) {
+        const int ia = pair_a[p] * 3;
+        const int ib = pair_b[p] * 3;
+        double dist2 = 0.0;
+        for (int c = 0; c < 3; ++c) {
+            const double diff = r_bohr[ia + c] - r_bohr[ib + c];
+            dx[p][c] = diff;
+            dist2 += diff * diff;
+        }
+        r[p] = std::sqrt(dist2);
+    }
+
+    constexpr double kRoot2 = 1.4142135623730951;
+    double x[3], op3z[3], zp3[3], coul[3], ex[3];
+    for (int p = 0; p < 3; ++p) {
+        const double zp = sato[static_cast<std::size_t>(p)];
+        op3z[p] = 1.0 + 3.0 * zp;
+        zp3[p] = zp + 3.0;
+        const double do4z = de_hartree[static_cast<std::size_t>(p)] / (4.0 * (1.0 + zp));
+        const double xp = std::exp(-beta_bohr_inv[static_cast<std::size_t>(p)] *
+                                   (r[p] - re_bohr[static_cast<std::size_t>(p)]));
+        x[p] = xp;
+        coul[p] = do4z * (zp3[p] * xp - 2.0 * op3z[p]) * xp;
+        ex[p] = do4z * (op3z[p] * xp - 2.0 * zp3[p]) * xp;
+    }
+
+    const double d01 = ex[0] - ex[1];
+    const double d12 = ex[1] - ex[2];
+    const double d20 = ex[2] - ex[0];
+    const double rad = std::sqrt(d01 * d01 + d12 * d12 + d20 * d20);
+    const double energy = coul[0] + coul[1] + coul[2] - rad / kRoot2;
+    const double sum_ex = ex[0] + ex[1] + ex[2];
+
+    double dedr[3];
+    for (int p = 0; p < 3; ++p) {
+        const double zp = sato[static_cast<std::size_t>(p)];
+        const double b_coef = beta_bohr_inv[static_cast<std::size_t>(p)] *
+                              (de_hartree[static_cast<std::size_t>(p)] / (2.0 * (1.0 + zp)));
+        double ex_deriv_term = 0.0;
+        if (rad > 1.0e-14) {
+            ex_deriv_term = ((3.0 * ex[p] - sum_ex) * (op3z[p] * x[p] - zp3[p])) / (kRoot2 * rad);
+        }
+        dedr[p] = b_coef * x[p] * (ex_deriv_term - zp3[p] * x[p] + op3z[p]);
+    }
+
+    std::vector<double> grad(9, 0.0);
+    for (int p = 0; p < 3; ++p) {
+        if (r[p] <= 0.0) {
+            continue;
+        }
+        const double factor = dedr[p] / r[p];
+        const int ia = pair_a[p] * 3;
+        const int ib = pair_b[p] * 3;
+        for (int c = 0; c < 3; ++c) {
+            const double g_comp = factor * dx[p][c];
+            grad[static_cast<std::size_t>(ia + c)] += g_comp;
+            grad[static_cast<std::size_t>(ib + c)] -= g_comp;
+        }
+    }
+    return {energy, std::move(grad)};
+}
+
+PyObject* py_project_symmetric_matrix(PyObject*, PyObject* args) {
+    PyObject* matrix_obj = nullptr;
+    PyObject* basis_obj = nullptr;
+    Py_ssize_t dim_s = 0;
+    Py_ssize_t n_basis_s = 0;
+    if (!PyArg_ParseTuple(args, "OOnn:project_symmetric_matrix", &matrix_obj, &basis_obj,
+                          &dim_s, &n_basis_s)) {
+        return nullptr;
+    }
+    if (dim_s <= 0 || n_basis_s < 0) {
+        PyErr_SetString(PyExc_ValueError, "dim must be positive and n_basis non-negative");
+        return nullptr;
+    }
+    std::vector<double> matrix;
+    std::vector<double> basis;
+    if (!sequence_to_vector(matrix_obj, matrix, "matrix") ||
+        !sequence_to_vector(basis_obj, basis, "basis")) {
+        return nullptr;
+    }
+    const std::size_t dim = static_cast<std::size_t>(dim_s);
+    const std::size_t n_basis = static_cast<std::size_t>(n_basis_s);
+    if (matrix.size() != dim * dim || basis.size() != dim * n_basis) {
+        PyErr_SetString(PyExc_ValueError, "invalid matrix or basis flattened dimensions");
+        return nullptr;
+    }
+    std::vector<double> out;
+    Py_BEGIN_ALLOW_THREADS
+    out = project_symmetric_matrix_impl(matrix, basis, dim, n_basis);
+    Py_END_ALLOW_THREADS
+
+    PyObject* result = PyList_New(static_cast<Py_ssize_t>(out.size()));
+    if (result == nullptr) {
+        return nullptr;
+    }
+    for (std::size_t idx = 0; idx < out.size(); ++idx) {
+        PyObject* value = PyFloat_FromDouble(out[idx]);
+        if (value == nullptr) {
+            Py_DECREF(result);
+            return nullptr;
+        }
+        PyList_SET_ITEM(result, static_cast<Py_ssize_t>(idx), value);
+    }
+    return result;
+}
+
+PyObject* py_page_mciver_lqa_step(PyObject*, PyObject* args) {
+    PyObject* grad_obj = nullptr;
+    PyObject* evals_obj = nullptr;
+    PyObject* evecs_obj = nullptr;
+    Py_ssize_t dim_s = 0;
+    double step_size = 0.0;
+    if (!PyArg_ParseTuple(args, "OOOnd:page_mciver_lqa_step", &grad_obj, &evals_obj,
+                          &evecs_obj, &dim_s, &step_size)) {
+        return nullptr;
+    }
+    if (dim_s <= 0 || step_size <= 0.0) {
+        PyErr_SetString(PyExc_ValueError, "dim and step_size must be positive");
+        return nullptr;
+    }
+    std::vector<double> gradient;
+    std::vector<double> eigenvalues;
+    std::vector<double> eigenvectors;
+    if (!sequence_to_vector(grad_obj, gradient, "gradient") ||
+        !sequence_to_vector(evals_obj, eigenvalues, "eigenvalues") ||
+        !sequence_to_vector(evecs_obj, eigenvectors, "eigenvectors")) {
+        return nullptr;
+    }
+    const std::size_t dim = static_cast<std::size_t>(dim_s);
+    if (gradient.size() != dim || eigenvalues.size() != dim || eigenvectors.size() != dim * dim) {
+        PyErr_SetString(PyExc_ValueError, "inconsistent gradient/eigenpair dimensions");
+        return nullptr;
+    }
+    LqaStepResult step;
+    Py_BEGIN_ALLOW_THREADS
+    step = page_mciver_lqa_step_impl(gradient, eigenvalues, eigenvectors, dim, step_size);
+    Py_END_ALLOW_THREADS
+
+    PyObject* dx_list = PyList_New(dim_s);
+    PyObject* tan_list = PyList_New(dim_s);
+    if (dx_list == nullptr || tan_list == nullptr) {
+        Py_XDECREF(dx_list);
+        Py_XDECREF(tan_list);
+        return nullptr;
+    }
+    for (std::size_t idx = 0; idx < dim; ++idx) {
+        PyObject* vx = PyFloat_FromDouble(step.delta_x[idx]);
+        PyObject* vt = PyFloat_FromDouble(step.end_tangent[idx]);
+        if (vx == nullptr || vt == nullptr) {
+            Py_XDECREF(vx);
+            Py_XDECREF(vt);
+            Py_DECREF(dx_list);
+            Py_DECREF(tan_list);
+            return nullptr;
+        }
+        PyList_SET_ITEM(dx_list, static_cast<Py_ssize_t>(idx), vx);
+        PyList_SET_ITEM(tan_list, static_cast<Py_ssize_t>(idx), vt);
+    }
+    PyObject* u_obj = PyFloat_FromDouble(step.u_star);
+    if (u_obj == nullptr) {
+        Py_DECREF(dx_list);
+        Py_DECREF(tan_list);
+        return nullptr;
+    }
+    PyObject* tuple = PyTuple_New(3);
+    if (tuple == nullptr) {
+        Py_DECREF(dx_list);
+        Py_DECREF(tan_list);
+        Py_DECREF(u_obj);
+        return nullptr;
+    }
+    PyTuple_SET_ITEM(tuple, 0, dx_list);
+    PyTuple_SET_ITEM(tuple, 1, tan_list);
+    PyTuple_SET_ITEM(tuple, 2, u_obj);
+    return tuple;
+}
+
+PyObject* py_leps_energy_and_gradient(PyObject*, PyObject* args) {
+    PyObject* coords_obj = nullptr;
+    PyObject* de_obj = nullptr;
+    PyObject* re_obj = nullptr;
+    PyObject* beta_obj = nullptr;
+    PyObject* sato_obj = nullptr;
+    double bohr_angstrom = 0.0;
+    if (!PyArg_ParseTuple(args, "OOOOOd:leps_energy_and_gradient", &coords_obj, &de_obj,
+                          &re_obj, &beta_obj, &sato_obj, &bohr_angstrom)) {
+        return nullptr;
+    }
+    if (bohr_angstrom <= 0.0) {
+        PyErr_SetString(PyExc_ValueError, "bohr_angstrom must be positive");
+        return nullptr;
+    }
+    std::vector<double> coords, de, re, beta, sato;
+    if (!sequence_to_vector(coords_obj, coords, "coords_angstrom") ||
+        !sequence_to_vector(de_obj, de, "de_hartree") ||
+        !sequence_to_vector(re_obj, re, "re_bohr") ||
+        !sequence_to_vector(beta_obj, beta, "beta_bohr_inv") ||
+        !sequence_to_vector(sato_obj, sato, "sato")) {
+        return nullptr;
+    }
+    if (coords.size() != 9 || de.size() != 3 || re.size() != 3 || beta.size() != 3 ||
+        sato.size() != 3) {
+        PyErr_SetString(PyExc_ValueError, "LEPS requires 3-atom coordinates (9) and 3 bond parameters");
+        return nullptr;
+    }
+    std::pair<double, std::vector<double>> eval_out;
+    Py_BEGIN_ALLOW_THREADS
+    eval_out = leps_energy_and_gradient_impl(coords, de, re, beta, sato, bohr_angstrom);
+    Py_END_ALLOW_THREADS
+
+    PyObject* grad_list = PyList_New(9);
+    PyObject* e_obj = PyFloat_FromDouble(eval_out.first);
+    if (grad_list == nullptr || e_obj == nullptr) {
+        Py_XDECREF(grad_list);
+        Py_XDECREF(e_obj);
+        return nullptr;
+    }
+    for (std::size_t idx = 0; idx < 9; ++idx) {
+        PyObject* g_val = PyFloat_FromDouble(eval_out.second[idx]);
+        if (g_val == nullptr) {
+            Py_DECREF(grad_list);
+            Py_DECREF(e_obj);
+            return nullptr;
+        }
+        PyList_SET_ITEM(grad_list, static_cast<Py_ssize_t>(idx), g_val);
+    }
+    PyObject* tuple = PyTuple_New(2);
+    if (tuple == nullptr) {
+        Py_DECREF(grad_list);
+        Py_DECREF(e_obj);
+        return nullptr;
+    }
+    PyTuple_SET_ITEM(tuple, 0, e_obj);
+    PyTuple_SET_ITEM(tuple, 1, grad_list);
+    return tuple;
+}
+
 PyObject* py_native_version(PyObject*, PyObject*) {
-    return PyUnicode_FromString("pyrate-cpp-0.2");
+    return PyUnicode_FromString("pyrate-cpp-0.3");
 }
 
 PyMethodDef module_methods[] = {
@@ -775,6 +1262,12 @@ PyMethodDef module_methods[] = {
      "Return the canonical thermal Eckart transmission coefficient."},
     {"beyer_swinehart", py_beyer_swinehart, METH_VARARGS,
      "Return a vibrational density-of-states grain array."},
+    {"project_symmetric_matrix", py_project_symmetric_matrix, METH_VARARGS,
+     "Orthogonally project a symmetric matrix P M P with P = I - B B^T."},
+    {"page_mciver_lqa_step", py_page_mciver_lqa_step, METH_VARARGS,
+     "Compute an exact arc-length Page-McIver LQA steepest-descent step."},
+    {"leps_energy_and_gradient", py_leps_energy_and_gradient, METH_VARARGS,
+     "Evaluate 3-atom Extended LEPS energy (Hartree) and gradient (Hartree/bohr)."},
     {"native_version", py_native_version, METH_NOARGS,
      "Return the native-kernel ABI version."},
     {nullptr, nullptr, 0, nullptr},

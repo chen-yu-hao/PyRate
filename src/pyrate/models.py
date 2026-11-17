@@ -440,3 +440,160 @@ class CalculationOptions:
         object.__setattr__(self, "method", method)
         object.__setattr__(self, "tunneling", tunneling)
 
+
+_SUPPORTED_MEP_METHODS = {"euler", "esd", "es1", "pm", "rpm", "lqa"}
+_SUPPORTED_MEP_CURVATURE = {"rphb", "none"}
+_SUPPORTED_HESSIAN_DIFF = {"central", "forward", "first"}
+_SUPPORTED_COORDINATE_SYSTEMS = {"curvilinear", "curv", "rectilinear", "rect", "cartesian"}
+
+
+@dataclass(frozen=True, slots=True)
+class MepOptions:
+    """Typed parameters governing Minimum Energy Path (MEP) integration."""
+
+    method: str = "pm"
+    step_size_bohr: float = 0.01
+    hessian_stride: int = 1
+    save_stride: int = 1
+    s_min_bohr: float = -1.5
+    s_max_bohr: float = 1.5
+    scale_mass_amu: float = 1.0
+    saddle_step_bohr: float | None = None
+    curvature_method: str = "rphb"
+    coordinate_system: str = "curvilinear"
+    stabilization_angle_deg: float = 15.0
+    stabilization_substeps: int = 8
+    gradient_tolerance_au: float = 1.0e-5
+    max_steps: int = 5000
+    start_from_saddle: bool = True
+    direction_sign: int = 1
+    project_rigid_modes: bool = True
+    hessian_step_bohr: float = 1.0e-4
+    hessian_difference: str = "central"
+    zero_threshold_cm1: float = 10.0
+    mode_tracking: bool = True
+    optimize_stationary_points: bool = False
+    mass_convention: str = "iupac"
+
+    def __post_init__(self) -> None:
+        norm_method = self.method.strip().lower()
+        if norm_method not in _SUPPORTED_MEP_METHODS:
+            raise ValueError(
+                f"MEP method must be one of {sorted(_SUPPORTED_MEP_METHODS)}, got {self.method!r}"
+            )
+        canonical_method = {
+            "esd": "euler",
+            "euler": "euler",
+            "es1": "es1",
+            "pm": "pm",
+            "rpm": "pm",
+            "lqa": "pm",
+        }[norm_method]
+        if self.step_size_bohr <= 0.0:
+            raise ValueError("step_size_bohr must be positive")
+        if self.hessian_stride < 1:
+            raise ValueError("hessian_stride must be at least 1")
+        if self.save_stride < 1:
+            raise ValueError("save_stride must be at least 1")
+        if self.s_max_bohr <= self.s_min_bohr:
+            raise ValueError("s_max_bohr must be greater than s_min_bohr")
+        if self.start_from_saddle and (self.s_min_bohr > 0.0 or self.s_max_bohr < 0.0):
+            raise ValueError(
+                "when start_from_saddle=True, s_min_bohr <= 0 <= s_max_bohr is required"
+            )
+        if self.scale_mass_amu <= 0.0:
+            raise ValueError("scale_mass_amu must be positive")
+        if self.saddle_step_bohr is not None and self.saddle_step_bohr <= 0.0:
+            raise ValueError("saddle_step_bohr must be positive when provided")
+        curv = self.curvature_method.strip().lower()
+        if curv not in _SUPPORTED_MEP_CURVATURE:
+            raise ValueError(
+                f"curvature_method must be one of {sorted(_SUPPORTED_MEP_CURVATURE)}"
+            )
+        coord_sys_raw = self.coordinate_system.strip().lower()
+        if coord_sys_raw not in _SUPPORTED_COORDINATE_SYSTEMS:
+            raise ValueError(
+                "coordinate_system must be 'curvilinear' or 'rectilinear', "
+                f"got {self.coordinate_system!r}"
+            )
+        coord_sys = (
+            "curvilinear"
+            if coord_sys_raw in {"curvilinear", "curv"}
+            else "rectilinear"
+        )
+        if not (0.0 < self.stabilization_angle_deg <= 90.0):
+            raise ValueError("stabilization_angle_deg must lie in (0, 90]")
+        if self.stabilization_substeps < 1:
+            raise ValueError("stabilization_substeps must be at least 1")
+        if self.gradient_tolerance_au < 0.0:
+            raise ValueError("gradient_tolerance_au cannot be negative")
+        if self.max_steps < 1:
+            raise ValueError("max_steps must be at least 1")
+        if self.direction_sign not in {-1, 1}:
+            raise ValueError("direction_sign must be -1 or 1")
+        if self.hessian_step_bohr <= 0.0:
+            raise ValueError("hessian_step_bohr must be positive")
+        hdiff = self.hessian_difference.strip().lower()
+        if hdiff not in _SUPPORTED_HESSIAN_DIFF:
+            raise ValueError(
+                f"hessian_difference must be one of {sorted(_SUPPORTED_HESSIAN_DIFF)}"
+            )
+        canonical_hdiff = "forward" if hdiff in {"forward", "first"} else "central"
+        if self.zero_threshold_cm1 < 0.0:
+            raise ValueError("zero_threshold_cm1 cannot be negative")
+
+        object.__setattr__(self, "method", canonical_method)
+        object.__setattr__(self, "step_size_bohr", float(self.step_size_bohr))
+        object.__setattr__(self, "hessian_stride", int(self.hessian_stride))
+        object.__setattr__(self, "save_stride", int(self.save_stride))
+        object.__setattr__(self, "s_min_bohr", float(self.s_min_bohr))
+        object.__setattr__(self, "s_max_bohr", float(self.s_max_bohr))
+        object.__setattr__(self, "scale_mass_amu", float(self.scale_mass_amu))
+        if self.saddle_step_bohr is not None:
+            object.__setattr__(self, "saddle_step_bohr", float(self.saddle_step_bohr))
+        object.__setattr__(self, "curvature_method", curv)
+        object.__setattr__(self, "coordinate_system", coord_sys)
+        object.__setattr__(self, "stabilization_angle_deg", float(self.stabilization_angle_deg))
+        object.__setattr__(self, "stabilization_substeps", int(self.stabilization_substeps))
+        object.__setattr__(self, "gradient_tolerance_au", float(self.gradient_tolerance_au))
+        object.__setattr__(self, "max_steps", int(self.max_steps))
+        object.__setattr__(self, "direction_sign", int(self.direction_sign))
+        object.__setattr__(self, "hessian_step_bohr", float(self.hessian_step_bohr))
+        object.__setattr__(self, "hessian_difference", canonical_hdiff)
+        object.__setattr__(self, "zero_threshold_cm1", float(self.zero_threshold_cm1))
+        object.__setattr__(self, "mass_convention", self.mass_convention.strip().lower())
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> MepOptions:
+        return cls(
+            method=str(data.get("method", "pm")),
+            step_size_bohr=float(data.get("step_size_bohr", 0.01)),
+            hessian_stride=int(data.get("hessian_stride", 1)),
+            save_stride=int(data.get("save_stride", 1)),
+            s_min_bohr=float(data.get("s_min_bohr", -1.5)),
+            s_max_bohr=float(data.get("s_max_bohr", 1.5)),
+            scale_mass_amu=float(data.get("scale_mass_amu", 1.0)),
+            saddle_step_bohr=(
+                float(data["saddle_step_bohr"])
+                if data.get("saddle_step_bohr") is not None
+                else None
+            ),
+            curvature_method=str(data.get("curvature_method", "rphb")),
+            coordinate_system=str(data.get("coordinate_system", "curvilinear")),
+            stabilization_angle_deg=float(data.get("stabilization_angle_deg", 15.0)),
+            stabilization_substeps=int(data.get("stabilization_substeps", 8)),
+            gradient_tolerance_au=float(data.get("gradient_tolerance_au", 1.0e-5)),
+            max_steps=int(data.get("max_steps", 5000)),
+            start_from_saddle=bool(data.get("start_from_saddle", True)),
+            direction_sign=int(data.get("direction_sign", 1)),
+            project_rigid_modes=bool(data.get("project_rigid_modes", True)),
+            hessian_step_bohr=float(data.get("hessian_step_bohr", 1.0e-4)),
+            hessian_difference=str(data.get("hessian_difference", "central")),
+            zero_threshold_cm1=float(data.get("zero_threshold_cm1", 10.0)),
+            mode_tracking=bool(data.get("mode_tracking", True)),
+            optimize_stationary_points=bool(data.get("optimize_stationary_points", False)),
+            mass_convention=str(data.get("mass_convention", "iupac")),
+        )
+
+
+
