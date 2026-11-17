@@ -28,12 +28,16 @@ from .legacy import LegacyInput, LegacySection, load_legacy, parse_legacy_text
 from .models import (
     Atom,
     CalculationOptions,
+    DualLevelCorrection,
+    EnvironmentModel,
     ElectronicState,
     PathPoint,
+    PressureDependence,
     Reaction,
     ReactionPath,
     Species,
     TunnelingProfile,
+    VrcModel,
 )
 from .normal_modes import _rigid_basis, normal_modes
 
@@ -59,6 +63,11 @@ class LoadedCalculation:
             "method": self.options.method,
             "tunneling": self.options.tunneling,
             "path_points": len(self.reaction.path.points) if self.reaction.path else 0,
+            "coordinate_system": (
+                self.options.coordinate_system
+                or (self.reaction.path.coordinate_system if self.reaction.path else None)
+            ),
+            "pressures_pa": list(self.options.pressures_pa),
             "standard_pressure_pa": self.reaction.standard_pressure_pa,
         }
 
@@ -132,6 +141,7 @@ def parse_toml_data(
             points=points,
             coordinate_unit=str(path_mapping.get("coordinate_unit", "angstrom")).lower(),
             reduced_mass_amu=float(path_mapping.get("reduced_mass_amu", 1.0)),
+            coordinate_system=str(path_mapping.get("coordinate_system", "cartesian")).lower(),
         )
 
     pressure_pa: float
@@ -146,6 +156,25 @@ def parse_toml_data(
         products=products,
         path=path_model,
         standard_pressure_pa=pressure_pa,
+        dual_level=(
+            DualLevelCorrection.from_mapping(_mapping(data["dual_level"], "dual_level"))
+            if data.get("dual_level") is not None else None
+        ),
+        vrc=(
+            VrcModel.from_mapping(_mapping(data["vrc"], "vrc"))
+            if data.get("vrc") is not None else None
+        ),
+        pressure_dependence=(
+            PressureDependence.from_mapping(
+                _mapping(data.get("pressure_dependence"), "pressure_dependence")
+            )
+            if data.get("pressure_dependence") is not None
+            else None
+        ),
+        environment=(
+            EnvironmentModel.from_mapping(_mapping(data["environment"], "environment"))
+            if data.get("environment") is not None else None
+        ),
     )
 
     temperatures = calculation.get("temperatures_k")
@@ -168,12 +197,26 @@ def parse_toml_data(
             _mapping(profile_data, "tunneling.profile")
         )
 
+    pressure_values = calculation.get("pressures_pa")
+    if pressure_values is None:
+        pressure_values = tuple(
+            float(value) * BAR_PA for value in calculation.get("pressures_bar", ())
+        )
+    elif isinstance(pressure_values, (int, float)):
+        pressure_values = (float(pressure_values),)
+
     options = CalculationOptions(
         temperatures_k=tuple(float(value) for value in temperatures),
         method=str(calculation.get("method", "tst")),
         tunneling=tunneling_method,
         output_rate_unit=str(calculation.get("rate_unit", "auto")),
         tunneling_profile=tunneling_profile,
+        pressures_pa=tuple(float(value) for value in pressure_values),
+        coordinate_system=(
+            str(calculation["coordinate_system"])
+            if calculation.get("coordinate_system") is not None else None
+        ),
+        pressure_method=str(calculation.get("pressure_method", "troe")),
     )
     return LoadedCalculation(
         name=name, reaction=reaction, options=options, raw=data, source=source

@@ -30,13 +30,14 @@
 | Hindered rotor | Implemented | Pitzer–Gwinn 与 Polyrate `BES0` 修正贝塞尔函数扭转内旋转修正 |
 | Morse / anharmonic vibration | Implemented | 一阶非谐常数 $\omega_e x_e$ 精确有界 Morse 能级梯与非谐 ZPE（QQ 待定） |
 | `fu40` 电子结构路径文件 | Implemented | 支持 `freqsource read` 与 `freqsource hessian`（紧缩/全矩阵）、`PROJCT` 梯度投影与 `RPHB` 曲率计算 |
+| 曲线内坐标/广义频率 (`curv1/curv2/curv3`) | Implemented | Wilson GF、冗余 B 矩阵伪逆、Cartesian Hessian 投影和路径点显式 `intrinsic_frequencies_cm1` |
 | MEP integration / Page–McIver / Euler | Planned | 当前读取预计算路径点或 `.fu40`；势能面上直接步进积分待实现 |
 | Direct dynamics hooks (`POT`) | Planned | 尚无编译期 Fortran 势能面（77 个算例）或 Gaussian/GAMESS 实时调用适配器 |
-| Dual-level correction / ISPE | Planned | 尚未实现 `fu50/fu51` 路径双层能量插值校正 |
-| IVTST / IOC | Planned | 尚未实现 |
-| VRC-VTST | Planned | loose transition state 多面采样尚未实现 |
-| SS-QRRK / pressure dependence | Partial | Beyer–Swinehart 与微正则 $N(E)$ 完成；化学活化/解离碰撞模型待接入 |
-| Solvent / surface options | Planned | 尚未实现 |
+| Dual-level correction / ISPE | Implemented | TOML `[dual_level]` 支持 high-minus-low 路径能量、坐标插值和 `fu50/fu51` 风格数据；`ivtst`/`ioc` 共享同一校正对象 |
+| IVTST / IOC | Implemented | `calculate_rates(..., method="ivtst")` 在校正后的自由能路径上执行变分瓶颈搜索；`ioc` 将参考点校正传播到路径 |
+| VRC-VTST | Implemented | `[vrc]` 确定性 loose-TS facet/方向采样、振动分区权重、对称数和瓶颈坐标 |
+| SS-QRRK / pressure dependence | Implemented | `rrkm_microcanonical_rate` 暴露 $k(E)=N^\ddagger/(h\rho)$；`PressureDependence` 与 `pressure_dependent_rate` 提供 Lindemann/Troe 压力网格和碰撞效率 |
+| Solvent / surface options | Implemented | `[environment]` 支持显式溶剂自由能、介电连续介质元数据、表面吸附能、位点密度和取向因子 |
 | `fu30/fu31` legacy unit files | Partial | `.fu40` 已完整实现；旧式固定格式 `.fu30/.fu31` 待映射 |
 | `fu15` summary reader | Implemented | 完整支持 Polyrate 2023 全部 101 个非空 `.fu15` 文件（含 3 类表头与多子表拼接） |
 | Polyrate fixed-format output 1:1 | Planned | 当前输出为结构化 JSON/CSV/表格 |

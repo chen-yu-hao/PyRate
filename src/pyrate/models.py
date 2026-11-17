@@ -273,6 +273,7 @@ class PathPoint:
     dividing_surface: Species
     effective_mass_amu: float | None = None
     curvatures_bohr_inv: tuple[float, ...] = ()
+    intrinsic_frequencies_cm1: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "coordinate", float(self.coordinate))
@@ -281,6 +282,10 @@ class PathPoint:
                 raise ValueError("effective_mass_amu must be positive")
             object.__setattr__(self, "effective_mass_amu", float(self.effective_mass_amu))
         object.__setattr__(self, "curvatures_bohr_inv", _as_float_tuple(self.curvatures_bohr_inv))
+        frequencies = _as_float_tuple(self.intrinsic_frequencies_cm1)
+        if any(value == 0.0 for value in frequencies):
+            raise ValueError("intrinsic coordinate frequencies cannot be zero")
+        object.__setattr__(self, "intrinsic_frequencies_cm1", frequencies)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any], index: int) -> "PathPoint":
@@ -295,6 +300,13 @@ class PathPoint:
             curvatures_bohr_inv=tuple(
                 float(value) for value in data.get("curvatures_bohr_inv", ())
             ),
+            intrinsic_frequencies_cm1=tuple(
+                float(value)
+                for value in data.get(
+                    "intrinsic_frequencies_cm1",
+                    data.get("coordinate_frequencies_cm1", ()),
+                )
+            ),
         )
 
 
@@ -305,6 +317,7 @@ class ReactionPath:
     points: tuple[PathPoint, ...]
     coordinate_unit: str = "angstrom"
     reduced_mass_amu: float = 1.0
+    coordinate_system: str = "cartesian"
 
     def __post_init__(self) -> None:
         points = tuple(sorted(self.points, key=lambda item: item.coordinate))
@@ -319,6 +332,22 @@ class ReactionPath:
         if self.reduced_mass_amu <= 0.0:
             raise ValueError("reduced_mass_amu must be positive")
         object.__setattr__(self, "reduced_mass_amu", float(self.reduced_mass_amu))
+        coordinate_system = str(self.coordinate_system).strip().lower().replace("-", "_")
+        if coordinate_system not in {
+            "cartesian",
+            "intrinsic",
+            "mass_scaled",
+            "dimensionless",
+            "curvilinear",
+            "curv1",
+            "curv2",
+            "curv3",
+        }:
+            raise ValueError(
+                "coordinate_system must be cartesian, curvilinear, curv1, curv2, curv3, "
+                "intrinsic, mass_scaled, or dimensionless"
+            )
+        object.__setattr__(self, "coordinate_system", coordinate_system)
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,6 +397,271 @@ class TunnelingProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class DualLevelCorrection:
+    """High-minus-low electronic energies along a reaction path.
+
+    ``method`` follows the Polyrate terminology: ``ispe`` interpolates
+    single-point corrections on the full path, ``ivtst`` uses the corrected
+    variational path, and ``ioc`` applies the correction at one optimized
+    dividing surface to all path points.
+    """
+
+    method: str = "ivtst"
+    low_level_energies_kj_mol: tuple[float, ...] = ()
+    high_level_energies_kj_mol: tuple[float, ...] = ()
+    energy_coordinates: tuple[float, ...] = ()
+    coordinates: tuple[float, ...] = ()
+    energy_shift_kj_mol: float = 0.0
+    reference_coordinate: float | None = None
+    interpolation: str = "linear"
+    enabled: bool = True
+
+    def __post_init__(self) -> None:
+        method = str(self.method).lower().replace("-", "")
+        if method == "ic":
+            method = "ioc"
+        if method in {"ic", "ioc"}:
+            method = "ioc"
+        if method in {"ivtst0", "ivtst-0", "ivtst1", "ivtst-1", "ivtstm", "ivtst-m"}:
+            method = method.replace("-", "")
+        if method not in {"ispe", "ivtst", "ioc", "ivtst0", "ivtst1", "ivtstm"}:
+            raise ValueError("dual-level method must be ispe, ivtst, ivtst-0, ivtst-1, ivtst-m, or ioc")
+        interpolation = str(self.interpolation).lower()
+        if interpolation not in {"linear", "cubic"}:
+            raise ValueError("dual-level interpolation must be linear or cubic")
+        low = _as_float_tuple(self.low_level_energies_kj_mol)
+        high = _as_float_tuple(self.high_level_energies_kj_mol)
+        coordinates = _as_float_tuple(self.energy_coordinates or self.coordinates)
+        if bool(low) != bool(high) or (low and len(low) != len(high)):
+            raise ValueError("dual-level low/high energy arrays must be supplied together")
+        if coordinates and len(coordinates) != len(low):
+            raise ValueError("energy_coordinates must match dual-level energy arrays")
+        object.__setattr__(self, "method", method)
+        object.__setattr__(self, "low_level_energies_kj_mol", low)
+        object.__setattr__(self, "high_level_energies_kj_mol", high)
+        object.__setattr__(self, "energy_coordinates", coordinates)
+        object.__setattr__(self, "coordinates", coordinates)
+        object.__setattr__(self, "energy_shift_kj_mol", float(self.energy_shift_kj_mol))
+        object.__setattr__(self, "interpolation", interpolation)
+        object.__setattr__(self, "enabled", bool(self.enabled))
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "DualLevelCorrection":
+        return cls(
+            method=str(data.get("method", data.get("model", "ivtst"))),
+            low_level_energies_kj_mol=tuple(
+                float(v) for v in data.get("low_level_energies_kj_mol", data.get("low_energies_kj_mol", ()))
+            ),
+            high_level_energies_kj_mol=tuple(
+                float(v) for v in data.get("high_level_energies_kj_mol", data.get("high_energies_kj_mol", ()))
+            ),
+            energy_coordinates=tuple(float(v) for v in data.get("energy_coordinates", data.get("coordinates", ()))),
+            coordinates=tuple(float(v) for v in data.get("coordinates", data.get("energy_coordinates", ()))),
+            energy_shift_kj_mol=float(data.get("energy_shift_kj_mol", data.get("correction_kj_mol", 0.0))),
+            reference_coordinate=(
+                float(data["reference_coordinate"])
+                if data.get("reference_coordinate") is not None
+                else None
+            ),
+            interpolation=str(data.get("interpolation", "linear")),
+            enabled=bool(data.get("enabled", True)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VrcSample:
+    """One deterministic VRC loose-transition-state quadrature facet."""
+
+    coordinate: float = 0.0
+    activation_gibbs_kj_mol: float = 0.0
+    energy_kj_mol: float | None = None
+    weight: float = 1.0
+    degeneracy: float = 1.0
+    frequencies_cm1: tuple[float, ...] = ()
+    separation_angstrom: float | None = None
+    orientation: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.weight <= 0.0 or self.degeneracy <= 0.0:
+            raise ValueError("VRC sample weight and degeneracy must be positive")
+        object.__setattr__(self, "coordinate", float(self.coordinate))
+        energy = self.activation_gibbs_kj_mol if self.energy_kj_mol is None else self.energy_kj_mol
+        object.__setattr__(self, "activation_gibbs_kj_mol", float(energy))
+        object.__setattr__(self, "energy_kj_mol", float(energy))
+        object.__setattr__(self, "weight", float(self.weight))
+        object.__setattr__(self, "degeneracy", float(self.degeneracy))
+        object.__setattr__(self, "frequencies_cm1", _as_float_tuple(self.frequencies_cm1))
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "VrcSample":
+        return cls(
+            coordinate=float(data.get("coordinate", data.get("separation_angstrom", 0.0))),
+            activation_gibbs_kj_mol=float(data.get("activation_gibbs_kj_mol", data.get("energy_kj_mol", 0.0))),
+            energy_kj_mol=(float(data["energy_kj_mol"]) if data.get("energy_kj_mol") is not None else None),
+            weight=float(data.get("weight", 1.0)),
+            degeneracy=float(data.get("degeneracy", 1.0)),
+            frequencies_cm1=tuple(float(v) for v in data.get("frequencies_cm1", ())),
+            separation_angstrom=(float(data["separation_angstrom"]) if data.get("separation_angstrom") is not None else None),
+            orientation=(float(data["orientation"]) if data.get("orientation") is not None else None),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VrcModel:
+    """VRC-VTST loose dividing-surface quadrature configuration."""
+
+    samples: tuple[VrcSample, ...]
+    symmetry_factor: float = 1.0
+    sampling_method: str = "deterministic"
+    enabled: bool = True
+
+    def __post_init__(self) -> None:
+        samples = tuple(self.samples)
+        if not samples:
+            raise ValueError("VRC model requires at least one sample")
+        if self.symmetry_factor <= 0.0:
+            raise ValueError("VRC symmetry_factor must be positive")
+        object.__setattr__(self, "samples", samples)
+        object.__setattr__(self, "symmetry_factor", float(self.symmetry_factor))
+        object.__setattr__(self, "enabled", bool(self.enabled))
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "VrcModel":
+        raw = data.get("samples", data.get("facets", ()))
+        if not isinstance(raw, (list, tuple)):
+            raise ValueError("vrc.samples must be an array")
+        return cls(
+            samples=tuple(VrcSample.from_mapping(item) for item in raw),
+            symmetry_factor=float(data.get("symmetry_factor", data.get("symmetry_number", 1.0))),
+            sampling_method=str(data.get("sampling_method", "deterministic")),
+            enabled=bool(data.get("enabled", True)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PressureDependence:
+    """SS-QRRK/master-equation pressure grid and collision model."""
+
+    pressures_pa: tuple[float, ...]
+    collider: str = "M"
+    collision_frequency_s_1_at_1bar: float = 1.0e9
+    collision_frequency_s1_at_1bar: float | None = None
+    energy_transfer_cm1: float = 200.0
+    low_pressure_rate_si: float = 0.0
+    falloff_model: str = "troe"
+    f_cent: float = 0.6
+    energy_grain_cm1: float = 25.0
+    maximum_energy_kj_mol: float = 250.0
+    collision_efficiency: float = 1.0
+    enabled: bool = True
+
+    def __post_init__(self) -> None:
+        raw_pressures = self.pressures_pa
+        if isinstance(raw_pressures, (int, float)):
+            raw_pressures = (raw_pressures,)
+        pressures = _as_float_tuple(raw_pressures)
+        if not pressures or any(value <= 0.0 for value in pressures):
+            raise ValueError("pressure grid must contain positive values")
+        collision_frequency = (
+            self.collision_frequency_s1_at_1bar
+            if self.collision_frequency_s1_at_1bar is not None
+            else self.collision_frequency_s_1_at_1bar
+        )
+        if collision_frequency <= 0.0:
+            raise ValueError("collision frequency must be positive")
+        if self.energy_transfer_cm1 <= 0.0 or self.energy_grain_cm1 <= 0.0:
+            raise ValueError("energy transfer and grain must be positive")
+        if self.collision_efficiency <= 0.0:
+            raise ValueError("collision_efficiency must be positive")
+        model = str(self.falloff_model).lower().replace("_", "-")
+        if model == "strong-collision":
+            model = "strong_collision"
+        if model not in {"troe", "lindemann", "strong_collision", "ss-qrrk"}:
+            raise ValueError("falloff_model must be troe, lindemann, strong_collision, or ss-qrrk")
+        object.__setattr__(self, "pressures_pa", pressures)
+        object.__setattr__(self, "collision_frequency_s_1_at_1bar", float(collision_frequency))
+        object.__setattr__(self, "collision_frequency_s1_at_1bar", float(collision_frequency))
+        object.__setattr__(self, "energy_transfer_cm1", float(self.energy_transfer_cm1))
+        object.__setattr__(self, "low_pressure_rate_si", float(self.low_pressure_rate_si))
+        object.__setattr__(self, "falloff_model", model)
+        object.__setattr__(self, "f_cent", float(self.f_cent))
+        object.__setattr__(self, "collision_efficiency", float(self.collision_efficiency))
+        object.__setattr__(self, "enabled", bool(self.enabled))
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "PressureDependence":
+        pressures = data.get("pressures_pa")
+        if pressures is None:
+            pressures = tuple(float(v) * 1.0e5 for v in data.get("pressures_bar", ()))
+        elif isinstance(pressures, (int, float)):
+            pressures = (float(pressures),)
+        return cls(
+            pressures_pa=tuple(float(v) for v in pressures),
+            collider=str(data.get("collider", data.get("bath_gas", "M"))),
+            collision_frequency_s_1_at_1bar=float(data.get("collision_frequency_s_1_at_1bar", data.get("collision_frequency_s^-1_at_1bar", 1.0e9))),
+            collision_frequency_s1_at_1bar=(
+                float(data["collision_frequency_s1_at_1bar"])
+                if data.get("collision_frequency_s1_at_1bar") is not None else None
+            ),
+            energy_transfer_cm1=float(data.get("energy_transfer_cm1", data.get("average_energy_transfer_cm1", 200.0))),
+            low_pressure_rate_si=float(data.get("low_pressure_rate_si", 0.0)),
+            falloff_model=str(data.get("falloff_model", "troe")),
+            f_cent=float(data.get("f_cent", 0.6)),
+            energy_grain_cm1=float(data.get("energy_grain_cm1", 25.0)),
+            maximum_energy_kj_mol=float(data.get("maximum_energy_kj_mol", 250.0)),
+            collision_efficiency=float(data.get("collision_efficiency", 1.0)),
+            enabled=bool(data.get("enabled", True)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EnvironmentModel:
+    """Solvent or surface activation free-energy model."""
+
+    phase: str = "gas"
+    solvent: str | None = None
+    species_solvation_kj_mol: Mapping[str, float] = field(default_factory=dict)
+    dielectric: float | None = None
+    activation_free_energy_kj_mol: float = 0.0
+    surface_site_density_m2: float | None = None
+    adsorption_energy_kj_mol: float = 0.0
+    orientation_factor: float = 1.0
+    enabled: bool = True
+
+    def __post_init__(self) -> None:
+        phase = str(self.phase).lower()
+        if phase not in {"gas", "solution", "solvent", "surface"}:
+            raise ValueError("environment phase must be gas, solution, solvent, or surface")
+        if self.dielectric is not None and self.dielectric <= 0.0:
+            raise ValueError("dielectric must be positive")
+        if self.surface_site_density_m2 is not None and self.surface_site_density_m2 <= 0.0:
+            raise ValueError("surface_site_density_m2 must be positive")
+        if self.orientation_factor <= 0.0:
+            raise ValueError("orientation_factor must be positive")
+        object.__setattr__(self, "phase", phase)
+        object.__setattr__(self, "species_solvation_kj_mol", dict(self.species_solvation_kj_mol))
+        object.__setattr__(self, "activation_free_energy_kj_mol", float(self.activation_free_energy_kj_mol))
+        object.__setattr__(self, "adsorption_energy_kj_mol", float(self.adsorption_energy_kj_mol))
+        object.__setattr__(self, "orientation_factor", float(self.orientation_factor))
+        object.__setattr__(self, "enabled", bool(self.enabled))
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "EnvironmentModel":
+        energies = data.get("species_solvation_kj_mol", data.get("solvation_free_energies_kj_mol", {}))
+        return cls(
+            phase=str(data.get("phase", "gas")),
+            solvent=(str(data["solvent"]) if data.get("solvent") is not None else None),
+            species_solvation_kj_mol={str(k): float(v) for k, v in dict(energies).items()},
+            dielectric=(float(data["dielectric"]) if data.get("dielectric") is not None else None),
+            activation_free_energy_kj_mol=float(data.get("activation_free_energy_kj_mol", 0.0)),
+            surface_site_density_m2=(float(data["surface_site_density_m2"]) if data.get("surface_site_density_m2") is not None else None),
+            adsorption_energy_kj_mol=float(data.get("adsorption_energy_kj_mol", 0.0)),
+            orientation_factor=float(data.get("orientation_factor", 1.0)),
+            enabled=bool(data.get("enabled", True)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class Reaction:
     """A gas-phase reaction and its transition-state model."""
 
@@ -376,6 +670,10 @@ class Reaction:
     products: tuple[Species, ...] = ()
     path: ReactionPath | None = None
     standard_pressure_pa: float = DEFAULT_STANDARD_PRESSURE_PA
+    dual_level: DualLevelCorrection | None = None
+    vrc: VrcModel | None = None
+    pressure_dependence: PressureDependence | None = None
+    environment: EnvironmentModel | None = None
 
     def __post_init__(self) -> None:
         reactants = tuple(self.reactants)
@@ -396,7 +694,10 @@ class Reaction:
         return len(self.reactants)
 
 
-_SUPPORTED_METHODS = {"tst", "cvt", "cus", "muvt", "us", "all"}
+_SUPPORTED_METHODS = {
+    "tst", "cvt", "cus", "muvt", "us", "ivtst", "vrc_vtst", "pressure",
+    "master_equation", "all",
+}
 _SUPPORTED_TUNNELING = {
     "none",
     "wigner",
@@ -421,12 +722,15 @@ class CalculationOptions:
     tunneling: str = "none"
     output_rate_unit: str = "auto"
     tunneling_profile: TunnelingProfile | None = None
+    pressures_pa: tuple[float, ...] = ()
+    coordinate_system: str | None = None
+    pressure_method: str = "troe"
 
     def __post_init__(self) -> None:
         temperatures = tuple(float(value) for value in self.temperatures_k)
         if not temperatures or any(value <= 0.0 for value in temperatures):
             raise ValueError("temperatures must contain positive values")
-        method = self.method.lower()
+        method = self.method.lower().replace("-", "_")
         tunneling = self.tunneling.lower()
         if method not in _SUPPORTED_METHODS:
             raise ValueError(f"method must be one of {sorted(_SUPPORTED_METHODS)}")
@@ -436,7 +740,15 @@ class CalculationOptions:
             raise ValueError("output_rate_unit cannot be empty")
         if tunneling == "wkb" and self.tunneling_profile is None:
             raise ValueError("wkb tunneling requires a tunneling profile")
+        raw_pressures = self.pressures_pa
+        if isinstance(raw_pressures, (int, float)):
+            raw_pressures = (raw_pressures,)
+        pressures = _as_float_tuple(raw_pressures)
+        if any(value <= 0.0 for value in pressures):
+            raise ValueError("pressures_pa must contain positive values")
         object.__setattr__(self, "temperatures_k", temperatures)
         object.__setattr__(self, "method", method)
         object.__setattr__(self, "tunneling", tunneling)
+        object.__setattr__(self, "pressures_pa", pressures)
+        object.__setattr__(self, "pressure_method", str(self.pressure_method).lower())
 

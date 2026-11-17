@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 from .constants import (
     AVOGADRO_MOL,
@@ -346,3 +347,19 @@ def convert_rate_from_si(value: float, molecularity: int, unit: str) -> tuple[fl
         "cm^3 molecule^-1 s^-1": 1.0e6 / AVOGADRO_MOL,
     }
     return value * factors[target], target
+
+
+def ivtst_rate_si(reaction: Reaction, temperature_k: float) -> Any:
+    """Lazy wrapper for the dual-level IVTST implementation."""
+
+    from .advanced import ivtst_rate_si as _ivtst_rate_si
+
+    return _ivtst_rate_si(reaction, temperature_k)
+
+
+def vrc_vtst_rate_si(reaction: Reaction, temperature_k: float) -> Any:
+    """Lazy wrapper for the weighted VRC-VTST implementation."""
+
+    from .advanced import vrc_vtst_rate_si as _vrc_vtst_rate_si
+
+    return _vrc_vtst_rate_si(reaction, temperature_k)
